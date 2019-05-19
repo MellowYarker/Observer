@@ -17,10 +17,13 @@
 #include <bloom.h>
 
 
-#define MAX_BUF BTC_ECKEY_PKEY_LENGTH + 1
+#define MAX_BUF BTC_ECKEY_PKEY_LENGTH + 1 // add a byte for the null terminator
+#define PRIVATE_KEY_TYPES 2 // # of private keys we generate from a given seed
 
-void remove_newline(char *s);
-void create_pubkey(char *buffer, btc_key key, btc_pubkey pubkey);
+void remove_newline(char *s); // for reading from textfile of passwords
+void front_pad_pkey(char *seed, char *front_pad, int len);
+void back_pad_pkey(char *seed, char *back_pad, char *front_pad, int len);
+void create_pubkey(char *buffer, btc_key *key, btc_pubkey *pubkey);
 
 int main(int argc, char **argv) {
 
@@ -51,6 +54,7 @@ int main(int argc, char **argv) {
     struct bloom priv_bloom;
     int false_positive_count = 0;
 
+    // check if the bloom filter exists
     if (access("private_key_filter.b", F_OK) != -1) {
         bloom_load(&priv_bloom, "private_key_filter.b");
     } else {
@@ -67,6 +71,7 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i < count; i++) {
         char seed[MAX_BUF];
+        char **keys = malloc(PRIVATE_KEY_TYPES * MAX_BUF); // array of priv keys
         
         if (fgets(seed, MAX_BUF, fname) == NULL)
             break;
@@ -80,123 +85,56 @@ int main(int argc, char **argv) {
         char front_pad[MAX_BUF];
         char back_pad[MAX_BUF];
 
-        // fill the buffers with 0's and the seed
-        memset(front_pad, '0', (MAX_BUF - 1) - len);
-        front_pad[MAX_BUF - 1 - len] = '\0';
-        strncat(front_pad, seed, len); // looks like 0000...{seed}\0
-
-        strncpy(back_pad, seed, len);
-        back_pad[len] = '\0';
-        strncat(back_pad, front_pad, (MAX_BUF - 1) - len); // {seed}...000\0
+        // private key types
+        front_pad_pkey(seed, front_pad, len);
+        keys[0] = front_pad; // TODO: func that generates and adds keys to array
+        back_pad_pkey(seed, back_pad, front_pad, len);
+        keys[1] = back_pad;
 
         // add private keys to bloom filter
-        // TODO: put these private keys in a mutable array on the heap
-        //       so we can do this in a loop.
-        int exists = bloom_add(&priv_bloom, front_pad, MAX_BUF - 1);
-        if (exists >= 0) {
-            btc_key key;
-            btc_privkey_init(&key);
-            btc_pubkey pubkey;
-            btc_pubkey_init(&pubkey);
-            create_pubkey(front_pad, key, pubkey);
-        } else {
-            fprintf(stderr, "filter not initialized\n");
-            continue;
+        for (int i = 0; i < PRIVATE_KEY_TYPES; i++) {
+            int exists = bloom_add(&priv_bloom, keys[i], MAX_BUF - 1);
+            if (exists >= 0) {
+                btc_key key;
+                btc_privkey_init(&key);
+                btc_pubkey pubkey;
+                btc_pubkey_init(&pubkey);
+                create_pubkey(keys[i], &key, &pubkey);
+
+                #ifdef DEBUG
+                    size_t sizeout = 128;
+                    char pubkey_hex[sizeout];
+                    btc_pubkey_get_hex(&pubkey, pubkey_hex, &sizeout);
+
+                    printf("Private key: %s\n", keys[i]);
+                    printf("Public Key: %s\n", pubkey_hex);
+                #endif
+            } else {
+                fprintf(stderr, "Bloom filter not initialized\n");
+                exit(1);
+            }
+            if (exists == 0) {
+                #ifdef DEBUG
+                    printf("This is a new private key!\n");
+                #endif
+                // add to DB
+            } else if (exists == 1) {
+                #ifdef DEBUG
+                    printf("This key might exist.\n");
+                #endif
+                false_positive_count++;
+                // CHECK DB
+                // if not there, add.
+            }
         }
-        if (exists == 0) {
-            printf("This is a new private key!\n");
-            // add to DB
-        } else if (exists == 1) {
-            printf("This key might exist.\n");
-            false_positive_count++;
-            // CHECK DB
-            // if not there, add.
-        }
-        exists = bloom_add(&priv_bloom, back_pad, MAX_BUF - 1);
-        if (exists >= 0) {
-            btc_key key;
-            btc_privkey_init(&key);
-            btc_pubkey pubkey;
-            btc_pubkey_init(&pubkey);
-            create_pubkey(back_pad, key, pubkey);
-        } else {
-            fprintf(stderr, "filter not initialized\n");
-            continue;
-        }
-        if (exists == 0) {
-            printf("This is a new private key!\n");
-            // add to DB
-        } else if (exists == 1) {
-            printf("This key might exist.\n");
-            false_positive_count++;
-            // CHECK DB
-            // if not there, add.
-        }
-
-        #ifdef DEBUG
-            printf("\nfront padded: %s\nback padded: %s\n", front_pad, back_pad);
-        #endif
-
-        // size_t sizeout = 128;
-        // // char WIF_FRONT[sizeout];
-        // // char WIF_BACK[sizeout];
-
-        // btc_key front_key, back_key;
-        // btc_privkey_init(&front_key);
-        // btc_privkey_init(&back_key);
-
-        // // fill the btc_key privkeys with the ascii values from our key strings.
-        // for (int i = 0; i < BTC_ECKEY_PKEY_LENGTH; i++) {
-        //     front_key.privkey[i] = (int) front_pad[i];
-        //     back_key.privkey[i] = (int) back_pad[i];
-        // }
-
-        // test private key
-        // int temp[] = {12,40,252,163,134,199,162,39,96,11,47,229,11,124,174,17,236,134,211,191,31,190,71,27,232,152,39,225,157,114,170,29};
-        // for (int i = 0; i < 32; i++) {
-        //     front_key.privkey[i] = temp[i];
-        //     printf("%d ", front_key.privkey[i]);
-        // }
-
-        // // if we want WIF keys
-        // btc_privkey_encode_wif(&front_key, chain, WIF_FRONT, &sizeout);
-        // btc_privkey_encode_wif(&back_key, chain, WIF_BACK, &sizeout);
-
-        // #ifdef DEBUG
-        //     printf("\nWIF front: %s\n", WIF_FRONT);
-        //     printf("WIF back: %s\n\n", WIF_BACK);
-        // #endif
-
-        // // WIF takes longer (have to decode to 32 byte priv key anyways)
-        // // save a lot of operations by skipping it.
-
-        // char front_pubkey_hex[sizeout];
-        // char back_pubkey_hex[sizeout];
-        // // pubkey_from_privatekey(chain, WIF_FRONT, front_pubkey_hex, &sizeout);
-        // // pubkey_from_privatekey(chain, WIF_BACK, back_pubkey_hex, &sizeout);
-        // btc_pubkey front_pubkey, back_pubkey;
-        // btc_pubkey_init(&front_pubkey);
-        // btc_pubkey_init(&back_pubkey);
-
-        // btc_pubkey_from_key(&front_key, &front_pubkey);
-        // btc_pubkey_from_key(&back_key, &back_pubkey);
-
-        // btc_pubkey_get_hex(&front_pubkey, front_pubkey_hex, &sizeout);
-        // btc_pubkey_get_hex(&back_pubkey, back_pubkey_hex, &sizeout);
-
-        // #ifdef DEBUG
-        //     printf("\nfront Public Key: %s\nback Public Key: %s\n\n###############################################################", front_pubkey_hex, back_pubkey_hex);
-        // #endif
-
     }
     end = clock();
 
-    // printf("Achived a rate of: %f keys per second\n", (count * 2)/(((double) end - start)/CLOCKS_PER_SEC));
     printf("\nTook %f seconds to generate %ld keys\n", ((double) end - start)/CLOCKS_PER_SEC, count * 2);
 
     fclose(fname);
     bloom_save(&priv_bloom, "private_key_filter.b");
-    printf("False Positives: %d\nFalse Positive Rate: %f\n", false_positive_count, ((double) false_positive_count / count) / 100);
+    printf("False Positives: %d\nFalse Positive Rate: %f\n", false_positive_count, ((double) false_positive_count / (2 * count)));
 
     return 0;
 }
@@ -210,15 +148,26 @@ void remove_newline(char *s) {
     }
 }
 
-void create_pubkey(char *buffer, btc_key key, btc_pubkey pubkey) {
-    size_t sizeout = 128;
-    btc_privkey_init(&key);
+/* Fills the string front_pad with 0's then the seed like so: 0000...{seed}\0 */
+void front_pad_pkey(char *seed, char *front_pad, int len) {
+    // fill the buffers with 0's and the seed
+    memset(front_pad, '0', (MAX_BUF - 1) - len);
+    front_pad[MAX_BUF - 1 - len] = '\0';
+    strncat(front_pad, seed, len); // looks like 0000...{seed}\0
+}
+
+/* Fills the string back_pad with the seed then 0's. Ex: {seed}00...000\0 */
+void back_pad_pkey(char *seed, char *back_pad, char *front_pad, int len) {
+    strncpy(back_pad, seed, len);
+    back_pad[len] = '\0';
+    strncat(back_pad, front_pad, (MAX_BUF - 1) - len);
+}
+
+void create_pubkey(char *buffer, btc_key *key, btc_pubkey *pubkey) {
+
     // fill the btc_key privkeys with the ascii values from our key strings.
     for (int i = 0; i < BTC_ECKEY_PKEY_LENGTH; i++) {
-        key.privkey[i] = (int) buffer[i];
+        key->privkey[i] = (int) buffer[i];
     }
-    char pubkey_hex[sizeout];
-    btc_pubkey_init(&pubkey);
-    btc_pubkey_from_key(&key, &pubkey);
-    btc_pubkey_get_hex(&pubkey, pubkey_hex, &sizeout);
+    btc_pubkey_from_key(key, pubkey);
 }
