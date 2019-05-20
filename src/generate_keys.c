@@ -27,8 +27,8 @@ void create_pubkey(char *buffer, btc_key *key, btc_pubkey *pubkey);
 
 int main(int argc, char **argv) {
 
-    if (argc != 2) {
-        fprintf(stdout, "Usage: %s <# keys to generate>\n", argv[0]);
+    if (argc != 3) {
+        fprintf(stdout, "Usage: %s <# keys to generate> <file>\n", argv[0]);
         exit(1);
     }
 
@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
     start = clock();
     btc_ecc_start();
 
-    // const btc_chainparams* chain = &btc_chainparams_main; // mainnet
+    const btc_chainparams* chain = &btc_chainparams_main; // mainnet
 
     const long count = strtol(argv[1], NULL, 10); // # of seeds to use
 
@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
         bloom_init2(&priv_bloom, 1000000, 0.01);
     }
 
-    FILE *fname = fopen("common_keys.txt", "r");
+    FILE *fname = fopen(argv[2], "r");
 
     if (fname == NULL) {
         perror("fopen");
@@ -95,25 +95,40 @@ int main(int argc, char **argv) {
         for (int i = 0; i < PRIVATE_KEY_TYPES; i++) {
             int exists = bloom_add(&priv_bloom, keys[i], MAX_BUF - 1);
             if (exists >= 0) {
-                btc_key key;
-                btc_privkey_init(&key);
+                size_t sizeout = 128;
+
+                btc_key key; // private key
                 btc_pubkey pubkey;
+
+                // address types
+                char address_p2pkh[sizeout];
+                char address_p2sh_p2wpkh[sizeout];
+                char address_p2wpkh[sizeout];
+
+                btc_privkey_init(&key);
                 btc_pubkey_init(&pubkey);
-                create_pubkey(keys[i], &key, &pubkey);
+                create_pubkey(keys[i], &key, &pubkey); // fills priv & pub keys
+
+                btc_pubkey_getaddr_p2pkh(&pubkey, chain, address_p2pkh);
+                btc_pubkey_getaddr_p2sh_p2wpkh(&pubkey, chain, address_p2sh_p2wpkh);
+                btc_pubkey_getaddr_p2wpkh(&pubkey, chain, address_p2wpkh);
 
                 #ifdef DEBUG
-                    size_t sizeout = 128;
                     char pubkey_hex[sizeout];
                     btc_pubkey_get_hex(&pubkey, pubkey_hex, &sizeout);
 
-                    printf("Private key: %s\n", keys[i]);
+                    printf("\nPrivate key: %s\n", keys[i]);
                     printf("Public Key: %s\n", pubkey_hex);
+                    printf("P2PKH: %s\n", address_p2pkh);
+                    printf("P2SH: %s\n", address_p2sh_p2wpkh);
+                    printf("P2WPKH: %s\n", address_p2wpkh);
                 #endif
             } else {
                 fprintf(stderr, "Bloom filter not initialized\n");
                 exit(1);
             }
             if (exists == 0) {
+
                 #ifdef DEBUG
                     printf("This is a new private key!\n");
                 #endif
