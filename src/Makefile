@@ -4,10 +4,10 @@ DEBUG = -DDEBUG
 BLOOM = ../libbloom
 STATIC_BLOOM = ${BLOOM}/build
 
-gen_keys: generate_keys.c
+gen_keys: generate_keys.c key_funcs.c
 	${CC} ${FLAGS} `pkg-config --cflags --libs ../libbtc/libbtc.pc` \
-	-I ${BLOOM} -L${STATIC_BLOOM} -lbloom -o $@ $<
+	-I ${BLOOM} -L${STATIC_BLOOM} -lbloom -o $@ $^
 
-debug: generate_keys.c
+debug: generate_keys.c key_funcs.c
 	${CC} ${FLAGS} ${DEBUG} `pkg-config --cflags --libs ../libbtc/libbtc.pc` \
-	-I ${BLOOM} -L${STATIC_BLOOM} -lbloom -o gen_keys $<
+	-I ${BLOOM} -L${STATIC_BLOOM} -lbloom -o gen_keys $^
