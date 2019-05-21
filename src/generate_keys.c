@@ -12,18 +12,16 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <math.h>
 
 // libbloom
 #include <bloom.h>
 
+//sqlite3
+#include <sqlite3.h>
 
-#define MAX_BUF BTC_ECKEY_PKEY_LENGTH + 1 // add a byte for the null terminator
-#define PRIVATE_KEY_TYPES 2 // # of private keys we generate from a given seed
+#include "keys.h"
 
-void remove_newline(char *s); // for reading from textfile of passwords
-void front_pad_pkey(char *seed, char *front_pad, int len);
-void back_pad_pkey(char *seed, char *back_pad, char *front_pad, int len);
-void create_pubkey(char *buffer, btc_key *key, btc_pubkey *pubkey);
 
 int main(int argc, char **argv) {
 
@@ -32,13 +30,22 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+
     clock_t start, end; // times the execution (for fun)
     start = clock();
     btc_ecc_start();
 
     const btc_chainparams* chain = &btc_chainparams_main; // mainnet
-
     const long count = strtol(argv[1], NULL, 10); // # of seeds to use
+
+    // array of keys to add to DB, default size is 20% of count
+    struct Array update;
+    init_Array(&update, ceil(2 * count * 0.2));
+
+    // array of keys that may or may not be in DB, must check.
+    // default size is 1% of count, since bloom filter has error rate of 1%
+    struct Array check;
+    init_Array(&check, ceil(2 * count * 0.01));
 
     /** Private Key Bloom Filter
      * 
@@ -94,52 +101,57 @@ int main(int argc, char **argv) {
         // add private keys to bloom filter
         for (int i = 0; i < PRIVATE_KEY_TYPES; i++) {
             int exists = bloom_add(&priv_bloom, keys[i], MAX_BUF - 1);
-            if (exists >= 0) {
-                size_t sizeout = 128;
-
-                btc_key key; // private key
-                btc_pubkey pubkey;
-
-                // address types
-                char address_p2pkh[sizeout];
-                char address_p2sh_p2wpkh[sizeout];
-                char address_p2wpkh[sizeout];
-
-                btc_privkey_init(&key);
-                btc_pubkey_init(&pubkey);
-                create_pubkey(keys[i], &key, &pubkey); // fills priv & pub keys
-
-                btc_pubkey_getaddr_p2pkh(&pubkey, chain, address_p2pkh);
-                btc_pubkey_getaddr_p2sh_p2wpkh(&pubkey, chain, address_p2sh_p2wpkh);
-                btc_pubkey_getaddr_p2wpkh(&pubkey, chain, address_p2wpkh);
-
-                #ifdef DEBUG
-                    char pubkey_hex[sizeout];
-                    btc_pubkey_get_hex(&pubkey, pubkey_hex, &sizeout);
-
-                    printf("\nPrivate key: %s\n", keys[i]);
-                    printf("Public Key: %s\n", pubkey_hex);
-                    printf("P2PKH: %s\n", address_p2pkh);
-                    printf("P2SH: %s\n", address_p2sh_p2wpkh);
-                    printf("P2WPKH: %s\n", address_p2wpkh);
-                #endif
-            } else {
+            if (exists < 0) {
                 fprintf(stderr, "Bloom filter not initialized\n");
                 exit(1);
             }
-            if (exists == 0) {
+            size_t sizeout = 128;
 
+            btc_key key; // private key
+            btc_pubkey pubkey;
+
+            // address types
+            char address_p2pkh[sizeout];
+            char address_p2sh_p2wpkh[sizeout];
+            char address_p2wpkh[sizeout];
+
+            btc_privkey_init(&key);
+            btc_pubkey_init(&pubkey);
+            create_pubkey(keys[i], &key, &pubkey); // fills priv & pub keys
+
+            btc_pubkey_getaddr_p2pkh(&pubkey, chain, address_p2pkh);
+            btc_pubkey_getaddr_p2sh_p2wpkh(&pubkey, chain, address_p2sh_p2wpkh);
+            btc_pubkey_getaddr_p2wpkh(&pubkey, chain, address_p2wpkh);
+
+            // TODO: likely wasting a lot of space with seed, try to
+            // dynamically change the size later.
+
+            struct key_set *set = malloc(sizeof(struct key_set));
+            fill_key_set(set, keys[i], seed, address_p2pkh,
+                            address_p2sh_p2wpkh, address_p2wpkh);
+
+            #ifdef DEBUG
+                char pubkey_hex[sizeout];
+                btc_pubkey_get_hex(&pubkey, pubkey_hex, &sizeout);
+
+                printf("\nPrivate key: %s\n", keys[i]);
+                printf("Public Key: %s\n", pubkey_hex);
+                printf("P2PKH: %s\n", address_p2pkh);
+                printf("P2SH: %s\n", address_p2sh_p2wpkh);
+                printf("P2WPKH: %s\n", address_p2wpkh);
+            #endif
+
+            if (exists == 0) {
                 #ifdef DEBUG
-                    printf("This is a new private key!\n");
+                    printf("New private key. Adding to update set.\n");
                 #endif
-                // add to DB
+                push_Array(&update, set); // add to update set
             } else if (exists == 1) {
                 #ifdef DEBUG
-                    printf("This key might exist.\n");
+                    printf("This key might exist. Adding to check set.\n");
                 #endif
                 false_positive_count++;
-                // CHECK DB
-                // if not there, add.
+                push_Array(&check, set); // add to check set
             }
         }
     }
@@ -151,38 +163,17 @@ int main(int argc, char **argv) {
     bloom_save(&priv_bloom, "private_key_filter.b");
     printf("False Positives: %d\nFalse Positive Rate: %f\n", false_positive_count, ((double) false_positive_count / (2 * count)));
 
+    // printf("\nWriting the following to database...\n");
+    for (int i = 0; i < update.used; i++) {
+        // printf("%s\n", update.array[i]->p2pkh);
+        free(update.array[i]);
+    }
+    free(update.array);
+
+    for (int i = 0; i < check.used; i++) {
+        free(check.array[i]);
+    }
+    free(check.array);
+
     return 0;
-}
-
-void remove_newline(char *s) {
-    for (int i = 0; i < strlen(s); i++) {
-        if (s[i] == '\n') {
-            s[i] = '\0';
-            return;
-        }
-    }
-}
-
-/* Fills the string front_pad with 0's then the seed like so: 0000...{seed}\0 */
-void front_pad_pkey(char *seed, char *front_pad, int len) {
-    // fill the buffers with 0's and the seed
-    memset(front_pad, '0', (MAX_BUF - 1) - len);
-    front_pad[MAX_BUF - 1 - len] = '\0';
-    strncat(front_pad, seed, len); // looks like 0000...{seed}\0
-}
-
-/* Fills the string back_pad with the seed then 0's. Ex: {seed}00...000\0 */
-void back_pad_pkey(char *seed, char *back_pad, char *front_pad, int len) {
-    strncpy(back_pad, seed, len);
-    back_pad[len] = '\0';
-    strncat(back_pad, front_pad, (MAX_BUF - 1) - len);
-}
-
-void create_pubkey(char *buffer, btc_key *key, btc_pubkey *pubkey) {
-
-    // fill the btc_key privkeys with the ascii values from our key strings.
-    for (int i = 0; i < BTC_ECKEY_PKEY_LENGTH; i++) {
-        key->privkey[i] = (int) buffer[i];
-    }
-    btc_pubkey_from_key(key, pubkey);
 }
