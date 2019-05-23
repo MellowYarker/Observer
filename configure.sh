@@ -1,10 +1,22 @@
 #!/bin/bash
-# configure and compile libbtc
+
+# todo: rename dynamic libs to force gcc to use static ones
+
+# set up, compile, and install libbtc
+cd libbtc
+./autogen.sh
+./configure --disable-wallet --disable-tools
+make check
+make install
+
 # compile libbloom
-# move dynamic libs to force gcc to use static
-# create sqlite3 database with keys table
+cd ../libbloom
+make
+
 #   *note* since all these keys are really just integers, see if it's worth it to
 #   store them in the DB as numbers rather than varchars. Since we're at risk of
 #   performing a lot of DB reads, it might make look up faster.
-cd db;
+
+# create sqlite3 database with keys table
+cd ../db
 sqlite3 observer.db < configure.sql
