@@ -22,6 +22,7 @@
 
 #include "keys.h"
 
+static int callback(void *NotUsed, int argc, char **argv, char **azColName);
 
 int main(int argc, char **argv) {
 
@@ -78,7 +79,14 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i < count; i++) {
         char seed[MAX_BUF];
-        char **keys = malloc(PRIVATE_KEY_TYPES * MAX_BUF); // array of priv keys
+
+        // array of priv keys
+        char **keys = malloc(PRIVATE_KEY_TYPES * sizeof(char *));
+
+        if (keys == NULL) {
+            perror("malloc");
+            exit(1);
+        }
         
         if (fgets(seed, MAX_BUF, fname) == NULL)
             break;
@@ -127,6 +135,10 @@ int main(int argc, char **argv) {
             // dynamically change the size later.
 
             struct key_set *set = malloc(sizeof(struct key_set));
+            if (set == NULL) {
+                perror("malloc");
+                exit(1);
+            }
             fill_key_set(set, keys[i], seed, address_p2pkh,
                             address_p2sh_p2wpkh, address_p2wpkh);
 
@@ -163,17 +175,81 @@ int main(int argc, char **argv) {
     bloom_save(&priv_bloom, "private_key_filter.b");
     printf("False Positives: %d\nFalse Positive Rate: %f\n", false_positive_count, ((double) false_positive_count / (2 * count)));
 
-    // printf("\nWriting the following to database...\n");
-    for (int i = 0; i < update.used; i++) {
-        // printf("%s\n", update.array[i]->p2pkh);
-        free(update.array[i]);
-    }
-    free(update.array);
+    // create the sql queries
+    // TODO: do the check query first so we can add them to update list before
+    int query_len = 500; // assume one statement is ~500 bytes (can realloc)
 
-    for (int i = 0; i < check.used; i++) {
-        free(check.array[i]);
+    // size of a query * number of queries needed
+    char *update_sql_query = malloc(sizeof(char) * query_len * update.used);
+    if (update_sql_query == NULL) {
+        perror("malloc");
+        exit(1);
     }
-    free(check.array);
+
+    if (build_update_query(&update, &update_sql_query, query_len) == 1) {
+        exit(1);
+    }
+    end = clock();
+
+    printf("Took %f seconds to build the query!\n", ((double) end - start)/CLOCKS_PER_SEC);
+
+
+    sqlite3 *db;
+    char *zErrMsg = 0;
+    int rc;
+
+    rc = sqlite3_open("../db/Observer.db", &db);
+    if (rc) {
+        fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+        exit(1);
+    }
+
+    rc = sqlite3_exec(db, update_sql_query, callback, 0, &zErrMsg);
+    free(update_sql_query);
+
+    if (rc != SQLITE_OK ) {
+        fprintf(stderr, "SQL error: %s\n", zErrMsg);
+        sqlite3_free(zErrMsg);
+    }
+
+
+    // TODO put the check query first so we can write everything once.
+    // char *check_sql_query = malloc(sizeof(char) * query_len); // 500 bytes to start
+    // // check query
+    // for (int i = 0; i < check.used; i++) {
+    //     char *values = sqlite3_mprintf("SELECT privkey FROM keys WHERE "\
+    //                                    "privkey='%q'; ",
+    //                                    check.array[i]->private);
+    //     if (values == NULL) {
+    //         fprintf(stderr, "Could not allocate memory for insert query.");
+    //         exit(1);
+    //     }
+    //     // check if we need to reallocate the query
+    //     if (strlen(values) + strlen(check_sql_query) >= query_len - 1) {
+    //         check_sql_query = realloc(check_sql_query,
+    //                                    2 * query_len * sizeof(char));
+    //         query_len *= 2;
+    //     }
+    //     strcat(check_sql_query, values);
+    //     sqlite3_free(values);
+    // }
+    sqlite3_close(db);
+
+    end = clock();
+    printf("Took %f seconds to complete!\n", ((double) end - start)/CLOCKS_PER_SEC);
+
+    free_Array(&update);
+    free_Array(&check);
 
     return 0;
+}
+
+// TODO rewrite CALLBACK function for our purposes
+static int callback(void *NotUsed, int argc, char **argv, char **azColName) {
+   int i;
+   for(i = 0; i<argc; i++) {
+      printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
+   }
+   printf("\n");
+   return 0;
 }

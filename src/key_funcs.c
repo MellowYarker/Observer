@@ -35,6 +35,14 @@ void push_Array(struct Array *key_array, struct key_set *set) {
     key_array->array[key_array->used++] = set; // increment used and add to the array
 }
 
+void free_Array(struct Array *key_array) {
+    for (int i = 0; i < key_array->used; i++) {
+        free(key_array->array[i]);
+    }
+    free(key_array->array);
+}
+
+
 int build_update_query(struct Array *update, char **query, int query_len) {
     for (int i = 0; i < update->used; i++) {
         char *values = sqlite3_mprintf("INSERT INTO keys VALUES ('%q', '%q', "\

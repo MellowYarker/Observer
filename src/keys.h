@@ -34,7 +34,12 @@ void init_Array(struct Array *key_array, size_t size);
 */
 void push_Array(struct Array *key_array, struct key_set *set);
 
-/* Builds the query for adding to the database. */
+/* Frees the key_array and all key_sets within it. */
+void free_Array(struct Array *key_array);
+
+/*  Builds the query for adding to the database.
+    Returns 1 if it fails, 0 on succcess.
+*/
 int build_update_query(struct Array *update, char **query, int query_len);
 
 void remove_newline(char *s);
