@@ -1,6 +1,7 @@
 
 #include <btc.h>
 #include <ecc_key.h>
+#include <sqlite3.h>
 
 #define SIZEOUT 128
 #define MAX_BUF BTC_ECKEY_PKEY_LENGTH + 1 // add a byte for the null terminator
@@ -24,6 +25,7 @@ struct Array {
 void fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh, 
                   char *p2sh_p2wpkh, char *p2wpkh);
 
+
 /* Initializes an Array structure that will store key_set structs. */
 void init_Array(struct Array *key_array, size_t size);
 
@@ -31,6 +33,9 @@ void init_Array(struct Array *key_array, size_t size);
     Updates the key_array struct and reallocates if necessary.
 */
 void push_Array(struct Array *key_array, struct key_set *set);
+
+/* Builds the query for adding to the database. */
+int build_update_query(struct Array *update, char **query, int query_len);
 
 void remove_newline(char *s);
 

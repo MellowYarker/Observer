@@ -35,6 +35,35 @@ void push_Array(struct Array *key_array, struct key_set *set) {
     key_array->array[key_array->used++] = set; // increment used and add to the array
 }
 
+int build_update_query(struct Array *update, char **query, int query_len) {
+    for (int i = 0; i < update->used; i++) {
+        char *values = sqlite3_mprintf("INSERT INTO keys VALUES ('%q', '%q', "\
+                                       "'%q', '%q', '%q'); ",
+                                       update->array[i]->private,
+                                       update->array[i]->seed,
+                                       update->array[i]->p2pkh,
+                                       update->array[i]->p2sh_p2wpkh,
+                                       update->array[i]->p2wpkh);
+        if (values == NULL) {
+            fprintf(stderr, "Could not allocate memory for insert query.");
+            return 1;
+        }
+        // check if we need to reallocate the query
+        if (strlen(values) + strlen(*query) >= query_len - 1) {
+            *query = realloc(*query, 2 * query_len * sizeof(char));
+            if (*query == NULL) {
+                perror("realloc");
+                return 1;
+            }
+            query_len *= 2;
+        }
+
+        strcat(*query, values);
+        sqlite3_free(values);
+    }
+    return 0;
+}
+
 void remove_newline(char *s) {
     for (int i = 0; i < strlen(s); i++) {
         if (s[i] == '\n') {
