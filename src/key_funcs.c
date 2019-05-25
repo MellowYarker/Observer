@@ -43,7 +43,11 @@ void free_Array(struct Array *key_array) {
 }
 
 
-int build_update_query(struct Array *update, char **query, int query_len) {
+int build_update_query(struct Array *update, char **query, int query_size) {
+    size_t current_len = 0; // keep track of length of query string.
+    char *begin = "BEGIN TRANSACTION; ";
+    strcpy(*query, begin);
+    current_len += strlen(begin);
     for (int i = 0; i < update->used; i++) {
         char *values = sqlite3_mprintf("INSERT INTO keys VALUES ('%q', '%q', "\
                                        "'%q', '%q', '%q'); ",
@@ -57,18 +61,23 @@ int build_update_query(struct Array *update, char **query, int query_len) {
             return 1;
         }
         // check if we need to reallocate the query
-        if (strlen(values) + strlen(*query) >= query_len - 1) {
-            *query = realloc(*query, 2 * query_len * sizeof(char));
+        int val_len = strlen(values);
+        if (val_len + current_len >= query_size) {
+            *query = realloc(*query, 2 * query_size * sizeof(char));
             if (*query == NULL) {
                 perror("realloc");
                 return 1;
             }
-            query_len *= 2;
+            query_size *= 2;
         }
-
-        strcat(*query, values);
+        memcpy(*query + current_len, values, val_len + 1);
+        current_len += val_len;
         sqlite3_free(values);
     }
+    char *commit = "COMMIT;";
+    strcat(*query + current_len, commit);
+    current_len += strlen(commit);
+    (*query)[current_len] = '\0';
     return 0;
 }
 

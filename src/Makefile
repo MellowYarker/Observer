@@ -1,5 +1,5 @@
 CC = gcc
-FLAGS = -Wall -g -std=gnu99
+FLAGS = -Wall -g -std=gnu99 -O
 DEBUG = -DDEBUG
 BLOOM = ../libbloom
 STATIC_BLOOM = ${BLOOM}/build

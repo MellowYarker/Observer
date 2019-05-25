@@ -177,7 +177,7 @@ int main(int argc, char **argv) {
 
     // create the sql queries
     // TODO: do the check query first so we can add them to update list before
-    int query_len = 500; // assume one statement is ~500 bytes (can realloc)
+    int query_len = 240; // assume one statement is ~240 bytes (can realloc)
 
     // size of a query * number of queries needed
     char *update_sql_query = malloc(sizeof(char) * query_len * update.used);
@@ -186,18 +186,21 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+    clock_t build_start = clock();
+
     if (build_update_query(&update, &update_sql_query, query_len) == 1) {
         exit(1);
     }
+
     end = clock();
 
-    printf("Took %f seconds to build the query!\n", ((double) end - start)/CLOCKS_PER_SEC);
+    printf("Took %f seconds to build the query!\n", ((double) end - build_start)/CLOCKS_PER_SEC);
 
 
     sqlite3 *db;
     char *zErrMsg = 0;
     int rc;
-
+    clock_t db_write_start = clock();
     rc = sqlite3_open("../db/Observer.db", &db);
     if (rc) {
         fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
@@ -236,7 +239,7 @@ int main(int argc, char **argv) {
     sqlite3_close(db);
 
     end = clock();
-    printf("Took %f seconds to complete!\n", ((double) end - start)/CLOCKS_PER_SEC);
+    printf("Took %f seconds to write the query!\n", ((double) db_write_start - start)/CLOCKS_PER_SEC);
 
     free_Array(&update);
     free_Array(&check);
