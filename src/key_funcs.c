@@ -45,6 +45,9 @@ void free_Array(struct Array *key_array) {
 
 int build_update_query(struct Array *update, char **query, int query_size) {
     size_t current_len = 0; // keep track of length of query string.
+    char *begin = "BEGIN TRANSACTION; ";
+    strcpy(*query, begin);
+    current_len += strlen(begin);
     for (int i = 0; i < update->used; i++) {
         char *values = sqlite3_mprintf("INSERT INTO keys VALUES ('%q', '%q', "\
                                        "'%q', '%q', '%q'); ",
@@ -71,6 +74,9 @@ int build_update_query(struct Array *update, char **query, int query_size) {
         current_len += val_len;
         sqlite3_free(values);
     }
+    char *commit = "COMMIT;";
+    strcat(*query + current_len, commit);
+    current_len += strlen(commit);
     (*query)[current_len] = '\0';
     return 0;
 }
