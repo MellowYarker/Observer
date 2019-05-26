@@ -6,6 +6,8 @@
 #define SIZEOUT 128
 #define MAX_BUF BTC_ECKEY_PKEY_LENGTH + 1 // add a byte for the null terminator
 #define PRIVATE_KEY_TYPES 2 // # of private keys we generate from a given seed
+#define UPDATE 0
+#define CHECK 1
 
 struct key_set {
     char private[33];
@@ -34,13 +36,29 @@ void init_Array(struct Array *key_array, size_t size);
 */
 void push_Array(struct Array *key_array, struct key_set *set);
 
+/*  Push all elements of b - a to dest.*/
+void push_Difference(struct Array *a, struct Array *b, struct Array *dest);
+
 /* Frees the key_array and all key_sets within it. */
 void free_Array(struct Array *key_array);
 
-/*  Builds the query for adding to the database.
-    Returns 1 if it fails, 0 on succcess.
+/*  Allocates space and calls the appropriate query builder function.
+    Returns 1 if the build failed, 0 if it succeeded.
 */
-int build_update_query(struct Array *update, char **query, int query_len);
+int prepare_query(struct Array *arr, char **query, int query_size, int type);
+
+/*  Builds the query for adding to the database.
+    Returns 1 if it fails, 0 if it succeeds.
+*/
+int build_update_query(struct Array *update, char **query, int query_size);
+
+/*  Builds the query for checking the database for certain records.
+    Returns 1 if it fails, 0 if it succeeds.
+*/
+int build_check_query(struct Array *check, char **query, int query_size);
+
+/*  sqlite3 callback function for checking if a private key is in the db */
+int callback(void *arr, int argc, char **argv, char **columns);
 
 void remove_newline(char *s);
 
