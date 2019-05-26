@@ -35,11 +35,53 @@ void push_Array(struct Array *key_array, struct key_set *set) {
     key_array->array[key_array->used++] = set; // increment used and add to the array
 }
 
+void push_Difference(struct Array *a, struct Array *b, struct Array *dest) {
+    size_t count = 0;
+    for (int i = 0; i < b->used; i++) {
+        // no more records need to be checked
+        if (count == b->used - a->used) {
+            break;
+        }
+        int found = 0;
+        for (int j = 0; j < a->used; j++) {
+            // compare private keys
+            if (strcmp(b->array[i]->private, a->array[j]->private) == 0) {
+                found = 1;
+                break;
+            }
+        }
+        if (found == 0) {
+            push_Array(dest, b->array[i]);
+            count++;
+        }
+    }
+}
+
 void free_Array(struct Array *key_array) {
     for (int i = 0; i < key_array->used; i++) {
         free(key_array->array[i]);
     }
     free(key_array->array);
+}
+
+int prepare_query(struct Array *arr, char **query, int query_size, int type) {
+    *query = malloc(sizeof(char) * query_size * arr->used);
+
+    if (*query == NULL) {
+        perror("malloc");
+        return 1;
+    }
+
+    if (type == CHECK) {
+        if (build_check_query(arr, query, query_size) == 1) {
+            return 1;
+        }
+    } else if (type == UPDATE) {
+        if (build_update_query(arr, query, query_size) == 1) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 
@@ -48,6 +90,7 @@ int build_update_query(struct Array *update, char **query, int query_size) {
     char *begin = "BEGIN TRANSACTION; ";
     strcpy(*query, begin);
     current_len += strlen(begin);
+
     for (int i = 0; i < update->used; i++) {
         char *values = sqlite3_mprintf("INSERT INTO keys VALUES ('%q', '%q', "\
                                        "'%q', '%q', '%q'); ",
@@ -74,10 +117,55 @@ int build_update_query(struct Array *update, char **query, int query_size) {
         current_len += val_len;
         sqlite3_free(values);
     }
+
     char *commit = "COMMIT;";
     strcat(*query + current_len, commit);
     current_len += strlen(commit);
     (*query)[current_len] = '\0';
+
+    return 0;
+}
+
+int build_check_query(struct Array *check, char **query, int query_size) {
+    size_t current_len = 0;
+    char *begin = "BEGIN TRANSACTION; ";
+    strcpy(*query, begin);
+    current_len += strlen(begin);
+    for (int i = 0; i < check->used; i++) {
+        char *values = sqlite3_mprintf("SELECT * FROM keys WHERE privkey='%q'; ",
+                                       check->array[i]->private);
+
+        if (values == NULL) {
+                fprintf(stderr, "Could not allocate memory for check query.");
+                return 1;
+        }
+        // check if we need to reallocate the query
+        int val_len = strlen(values);
+        if (val_len + current_len >= query_size) {
+            *query = realloc(*query, 2 * query_size * sizeof(char));
+            if (*query == NULL) {
+                perror("realloc");
+                return 1;
+            }
+            query_size *= 2;
+        }
+        memcpy(*query + current_len, values, val_len + 1);
+        current_len += val_len;
+        sqlite3_free(values);
+    }
+    char *commit = "COMMIT;";
+    strcat(*query + current_len, commit);
+    current_len += strlen(commit);
+    (*query)[current_len] = '\0';
+    return 0;
+}
+
+int callback(void *arr, int argc, char **argv, char **columns) {
+    // TODO: we could just store the private key, not the whole key set.
+    // add this key_set to our in_db array
+    struct key_set *keys = malloc(sizeof(struct key_set));
+    fill_key_set(keys, argv[0], argv[1], argv[2], argv[3], argv[4]);
+    push_Array(arr, keys);
     return 0;
 }
 
