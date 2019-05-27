@@ -87,7 +87,7 @@ int prepare_query(struct Array *arr, char **query, int query_size, int type) {
 
 int build_update_query(struct Array *update, char **query, int query_size) {
     size_t current_len = 0; // keep track of length of query string.
-    char *begin = "BEGIN TRANSACTION; ";
+    char *begin = "BEGIN; ";
     strcpy(*query, begin);
     current_len += strlen(begin);
 
@@ -128,7 +128,7 @@ int build_update_query(struct Array *update, char **query, int query_size) {
 
 int build_check_query(struct Array *check, char **query, int query_size) {
     size_t current_len = 0;
-    char *begin = "BEGIN TRANSACTION; ";
+    char *begin = "BEGIN; ";
     strcpy(*query, begin);
     current_len += strlen(begin);
     for (int i = 0; i < check->used; i++) {
