@@ -79,14 +79,6 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i < count; i++) {
         char seed[MAX_BUF];
-
-        // array of priv keys
-        char **keys = malloc(PRIVATE_KEY_TYPES * sizeof(char *));
-
-        if (keys == NULL) {
-            perror("malloc");
-            exit(1);
-        }
         
         if (fgets(seed, MAX_BUF, fname) == NULL)
             break;
@@ -97,14 +89,7 @@ int main(int argc, char **argv) {
             printf("\n\nPrivate Seed: %s\n", seed);
         #endif
 
-        char front_pad[MAX_BUF];
-        char back_pad[MAX_BUF];
-
-        // private key types
-        front_pad_pkey(seed, front_pad, len);
-        keys[0] = front_pad; // TODO: func that generates and adds keys to array
-        back_pad_pkey(seed, back_pad, front_pad, len);
-        keys[1] = back_pad;
+        char **keys = seed_to_priv(seed, len); // array of private keys
 
         // add private keys to bloom filter
         for (int j = 0; j < PRIVATE_KEY_TYPES; j++) {
@@ -115,7 +100,7 @@ int main(int argc, char **argv) {
             }
             size_t sizeout = 128;
 
-            btc_key key; // private key
+            btc_key key; // private key struct (for libbtc)
             btc_pubkey pubkey;
 
             // address types
@@ -165,7 +150,9 @@ int main(int argc, char **argv) {
                 false_positive_count++;
                 push_Array(&check, set); // add to check set
             }
+            free(keys[j]);
         }
+        free(keys);
     }
     end = clock();
 
@@ -258,6 +245,8 @@ int main(int argc, char **argv) {
 
     free_Array(&update);
     sqlite3_close(db);
+    end = clock();
+    printf("\nTook %f seconds.\n", ((double) end - start)/CLOCKS_PER_SEC);
 
     return 0;
 }
