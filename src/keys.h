@@ -61,6 +61,20 @@ void push_Difference(struct Array *a, struct Array *b, struct Array *dest);
 void free_Array(struct Array *key_array);
 
 
+/*  Start of a database transaction. */
+void start_tx(char **query,  size_t *current_len);
+
+
+/*  End of a database transaction. */
+void end_tx(char **query, size_t *current_len);
+
+
+/*  Checks if query needs to be reallocated, if yes it reallocates.
+    If resize_check fails for any reason it returns 1, otherwise it returns 0.
+*/
+int resize_check(char *values, char **query, size_t *current_len, int *q_size);
+
+
 /*  Allocates space and calls the appropriate query builder function.
     Returns 1 if the build failed, 0 if it succeeded.
 */
