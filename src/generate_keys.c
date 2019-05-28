@@ -42,6 +42,8 @@ int main(int argc, char **argv) {
     // array of keys to add to DB, default size is 20% of generated priv keys
     struct Array update;
     init_Array(&update, ceil(generated * 0.2));
+    printf("Generating %d private keys per seed in %s\n", PRIVATE_KEY_TYPES,
+                                                           argv[2]);
 
     // array of keys that may or may not be in DB, must check. Default size is
     // 1% of generated priv keys, since the bloom filter has error rate of 1%

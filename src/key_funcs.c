@@ -74,9 +74,40 @@ void free_Array(struct Array *key_array) {
     free(key_array->array);
 }
 
+void start_tx(char **query,  size_t *current_len) {
+    char *begin = "BEGIN; ";
+    strcpy(*query, begin);
+    *current_len += strlen(begin);
+}
+
+void end_tx(char **query, size_t *current_len) {
+    char *commit = "COMMIT;";
+    strcat(*query + *current_len, commit);
+    *current_len += strlen(commit);
+    (*query)[*current_len] = '\0';
+}
+
+
+int resize_check(char *value, char **query, size_t *current_len, int *q_size) {
+    int val_len = strlen(value);
+    if (val_len + *current_len >= *q_size) {
+        *query = realloc(*query, 2 * (*q_size) * sizeof(char));
+        if (*query == NULL) {
+            perror("realloc");
+            return 1;
+        }
+        (*q_size) *= 2;
+    }
+    memcpy(*query + (*current_len), value, val_len + 1);
+    *current_len += val_len;
+    sqlite3_free(value);
+    return 0;
+}
+
 
 int prepare_query(struct Array *arr, char **query, int query_size, int type) {
     *query = malloc(sizeof(char) * query_size * arr->used);
+    query_size *= arr->used; // current size of the query
 
     if (*query == NULL) {
         perror("malloc");
@@ -98,9 +129,7 @@ int prepare_query(struct Array *arr, char **query, int query_size, int type) {
 
 int build_update_query(struct Array *update, char **query, int query_size) {
     size_t current_len = 0; // keep track of length of query string.
-    char *begin = "BEGIN; ";
-    strcpy(*query, begin);
-    current_len += strlen(begin);
+    start_tx(query, &current_len);
 
     for (int i = 0; i < update->used; i++) {
         char *values = sqlite3_mprintf("INSERT INTO keys VALUES ('%q', '%q', "\
@@ -114,35 +143,21 @@ int build_update_query(struct Array *update, char **query, int query_size) {
             fprintf(stderr, "Could not allocate memory for insert query.");
             return 1;
         }
-        // check if we need to reallocate the query
-        int val_len = strlen(values);
-        if (val_len + current_len >= query_size) {
-            *query = realloc(*query, 2 * query_size * sizeof(char));
-            if (*query == NULL) {
-                perror("realloc");
-                return 1;
-            }
-            query_size *= 2;
+        // reallocate query if necessary
+        if (resize_check(values, query, &current_len, &query_size) == 1) {
+            return 1;
         }
-        memcpy(*query + current_len, values, val_len + 1);
-        current_len += val_len;
-        sqlite3_free(values);
     }
 
-    char *commit = "COMMIT;";
-    strcat(*query + current_len, commit);
-    current_len += strlen(commit);
-    (*query)[current_len] = '\0';
-
+    end_tx(query, &current_len);
     return 0;
 }
 
 
 int build_check_query(struct Array *check, char **query, int query_size) {
     size_t current_len = 0;
-    char *begin = "BEGIN; ";
-    strcpy(*query, begin);
-    current_len += strlen(begin);
+    start_tx(query, &current_len);
+
     for (int i = 0; i < check->used; i++) {
         char *values = sqlite3_mprintf("SELECT * FROM keys WHERE privkey='%q'; ",
                                        check->array[i]->private);
@@ -151,24 +166,12 @@ int build_check_query(struct Array *check, char **query, int query_size) {
                 fprintf(stderr, "Could not allocate memory for check query.");
                 return 1;
         }
-        // check if we need to reallocate the query
-        int val_len = strlen(values);
-        if (val_len + current_len >= query_size) {
-            *query = realloc(*query, 2 * query_size * sizeof(char));
-            if (*query == NULL) {
-                perror("realloc");
-                return 1;
-            }
-            query_size *= 2;
+        // reallocate query if necessary
+        if (resize_check(values, query, &current_len, &query_size) == 1) {
+            return 1;
         }
-        memcpy(*query + current_len, values, val_len + 1);
-        current_len += val_len;
-        sqlite3_free(values);
     }
-    char *commit = "COMMIT;";
-    strcat(*query + current_len, commit);
-    current_len += strlen(commit);
-    (*query)[current_len] = '\0';
+    end_tx(query, &current_len);
     return 0;
 }
 
