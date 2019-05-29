@@ -1,18 +1,16 @@
 // libbtc
-#include <base58.h>
 #include <btc.h>
 #include <chainparams.h>
 #include <ecc.h>
 #include <ecc_key.h>
-#include <tool.h>
 
 // standard C
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <time.h>
-#include <math.h>
+#include <unistd.h>
 
 // libbloom
 #include <bloom.h>
@@ -35,6 +33,16 @@ int main(int argc, char **argv) {
     start = clock();
     btc_ecc_start();
 
+    // new sorted filename
+    char *temp = "sorted_";
+    char sorted[strlen(temp) + strlen(argv[2]) + 1];
+    strcpy(sorted, temp);
+    strcat(sorted, argv[2]);
+
+    if (sort_seeds(argv[2], sorted) == 1) {
+        exit(1);
+    }
+
     const btc_chainparams* chain = &btc_chainparams_main; // mainnet
     const long count = strtol(argv[1], NULL, 10); // # of seeds to use
     const unsigned long generated = count * PRIVATE_KEY_TYPES;
@@ -42,8 +50,7 @@ int main(int argc, char **argv) {
     // array of keys to add to DB, default size is 20% of generated priv keys
     struct Array update;
     init_Array(&update, ceil(generated * 0.2));
-    printf("Generating %d private keys per seed in %s\n", PRIVATE_KEY_TYPES,
-                                                           argv[2]);
+    printf("Generating %d private keys per seed.\n", PRIVATE_KEY_TYPES);
 
     // array of keys that may or may not be in DB, must check. Default size is
     // 1% of generated priv keys, since the bloom filter has error rate of 1%
@@ -72,7 +79,7 @@ int main(int argc, char **argv) {
         bloom_init2(&priv_bloom, 1000000, 0.01);
     }
 
-    FILE *fname = fopen(argv[2], "r");
+    FILE *fname = fopen(sorted, "r");
 
     if (fname == NULL) {
         perror("fopen");

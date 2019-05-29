@@ -38,6 +38,16 @@ typedef void (*priv_func_ptr) (char *, char *, int);
 */
 extern const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES];
 
+
+/*  Sorts the input seed file and make sures there are no duplicates.
+    This helps us avoid poorly constructed database transactions, for example,
+    a transaction where we try to insert the same record twice.
+
+    Returns 0 on success, 1 on failure.
+*/
+int sort_seeds(char *orig, char *sorted);
+
+
 /* Fill the key_set set with the provided string arguements. */
 void fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh, 
                   char *p2sh_p2wpkh, char *p2wpkh);
