@@ -7,12 +7,13 @@
 #include <tool.h>
 
 // standard C
+#include <fcntl.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <time.h>
-#include <math.h>
+#include <unistd.h>
 
 // libbloom
 #include <bloom.h>
@@ -35,6 +36,36 @@ int main(int argc, char **argv) {
     start = clock();
     btc_ecc_start();
 
+    // new sorted filename
+    char *temp = "sorted_";
+    char new[strlen(temp) + strlen(argv[2]) + 1];
+    strcpy(new, temp);
+    strcat(new, argv[2]);
+
+    //  sort and remove duplicates of seed set
+    int r = fork();
+
+    if (r < 0) {
+        perror("fork");
+        exit(1);
+    } else if (r == 0) {
+        int f = open(new, O_CREAT | O_WRONLY);
+
+        dup2(f, STDOUT_FILENO); // sort's output will write to original file
+        execl("/usr/bin/sort", "sort", "-u", argv[2], NULL);
+        exit(1);
+    } else {
+        int status;
+
+        wait(&status); // wait for sorting to finish
+        if (WEXITSTATUS(status) == 1) {
+            printf("Failed to sort seeds. Exiting.\n");
+            exit(1);
+        } else {
+            printf("Sorted seed set stored in %s.\n", new);
+        }
+    }
+
     const btc_chainparams* chain = &btc_chainparams_main; // mainnet
     const long count = strtol(argv[1], NULL, 10); // # of seeds to use
     const unsigned long generated = count * PRIVATE_KEY_TYPES;
@@ -43,7 +74,7 @@ int main(int argc, char **argv) {
     struct Array update;
     init_Array(&update, ceil(generated * 0.2));
     printf("Generating %d private keys per seed in %s\n", PRIVATE_KEY_TYPES,
-                                                           argv[2]);
+                                                          new);
 
     // array of keys that may or may not be in DB, must check. Default size is
     // 1% of generated priv keys, since the bloom filter has error rate of 1%
@@ -72,7 +103,7 @@ int main(int argc, char **argv) {
         bloom_init2(&priv_bloom, 1000000, 0.01);
     }
 
-    FILE *fname = fopen(argv[2], "r");
+    FILE *fname = fopen(new, "r");
 
     if (fname == NULL) {
         perror("fopen");
