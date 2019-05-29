@@ -1,10 +1,39 @@
 #include "keys.h"
+
+#include <fcntl.h>
 #include <string.h>
+#include <unistd.h>
 
 
 const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES] = { &front_pad_pkey,
                                                               &back_pad_pkey/*,
                                                               &your_method */};
+
+int sort_seeds(char *orig, char *sorted) {
+    int r = fork();
+
+    if (r < 0) {
+        perror("fork");
+        return 1;
+    } else if (r == 0) {
+        int f = open(sorted, O_CREAT | O_WRONLY);
+
+        dup2(f, STDOUT_FILENO); // sort's output will write to original file
+        execl("/usr/bin/sort", "sort", "-u", orig, NULL);
+        exit(1);
+    } else {
+        int status;
+
+        wait(&status); // wait for sorting to finish
+        if (WEXITSTATUS(status) == 1) {
+            printf("Failed to sort seeds. Exiting.\n");
+            return 1;
+        } else {
+            printf("Sorted seed set stored in %s.\n", sorted);
+        }
+        return 0;
+    }
+}
 
 
 void fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh, 
