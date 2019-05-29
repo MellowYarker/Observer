@@ -1,13 +1,10 @@
 // libbtc
-#include <base58.h>
 #include <btc.h>
 #include <chainparams.h>
 #include <ecc.h>
 #include <ecc_key.h>
-#include <tool.h>
 
 // standard C
-#include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,32 +35,12 @@ int main(int argc, char **argv) {
 
     // new sorted filename
     char *temp = "sorted_";
-    char new[strlen(temp) + strlen(argv[2]) + 1];
-    strcpy(new, temp);
-    strcat(new, argv[2]);
+    char sorted[strlen(temp) + strlen(argv[2]) + 1];
+    strcpy(sorted, temp);
+    strcat(sorted, argv[2]);
 
-    //  sort and remove duplicates of seed set
-    int r = fork();
-
-    if (r < 0) {
-        perror("fork");
+    if (sort_seeds(argv[2], sorted) == 1) {
         exit(1);
-    } else if (r == 0) {
-        int f = open(new, O_CREAT | O_WRONLY);
-
-        dup2(f, STDOUT_FILENO); // sort's output will write to original file
-        execl("/usr/bin/sort", "sort", "-u", argv[2], NULL);
-        exit(1);
-    } else {
-        int status;
-
-        wait(&status); // wait for sorting to finish
-        if (WEXITSTATUS(status) == 1) {
-            printf("Failed to sort seeds. Exiting.\n");
-            exit(1);
-        } else {
-            printf("Sorted seed set stored in %s.\n", new);
-        }
     }
 
     const btc_chainparams* chain = &btc_chainparams_main; // mainnet
@@ -73,8 +50,7 @@ int main(int argc, char **argv) {
     // array of keys to add to DB, default size is 20% of generated priv keys
     struct Array update;
     init_Array(&update, ceil(generated * 0.2));
-    printf("Generating %d private keys per seed in %s\n", PRIVATE_KEY_TYPES,
-                                                          new);
+    printf("Generating %d private keys per seed.\n", PRIVATE_KEY_TYPES);
 
     // array of keys that may or may not be in DB, must check. Default size is
     // 1% of generated priv keys, since the bloom filter has error rate of 1%
@@ -103,7 +79,7 @@ int main(int argc, char **argv) {
         bloom_init2(&priv_bloom, 1000000, 0.01);
     }
 
-    FILE *fname = fopen(new, "r");
+    FILE *fname = fopen(sorted, "r");
 
     if (fname == NULL) {
         perror("fopen");
