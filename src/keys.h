@@ -48,13 +48,15 @@ extern const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES];
 int sort_seeds(char *orig, char *sorted);
 
 
-/* Fill the key_set set with the provided string arguements. */
+/*  Fill the key_set set with the provided string arguements.
+    Returns 0 if it succeeds and 1 if it fails.
+*/
 int fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh,
                   char *p2sh_p2wpkh, char *p2wpkh);
 
 
 /*  Initializes an Array structure that will store key_set structs.
-    Returns 0 if it succeeds and 0 if it fails.
+    Returns 0 if it succeeds and 1 if it fails.
 */
 int init_Array(struct Array *key_array, size_t size);
 
