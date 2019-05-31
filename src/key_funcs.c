@@ -36,24 +36,31 @@ int sort_seeds(char *orig, char *sorted) {
 }
 
 
-void fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh, 
+int fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh,
                   char *p2sh_p2wpkh, char *p2wpkh) {
+    set->seed = malloc(sizeof(char) * strlen(seed) + 1);
+    if (set->seed == NULL) {
+        perror("malloc");
+        return 1;
+    }
     strcpy(set->private, private);
     strcpy(set->seed, seed);
     strcpy(set->p2pkh, p2pkh);
     strcpy(set->p2sh_p2wpkh, p2sh_p2wpkh);
     strcpy(set->p2wpkh, p2wpkh);
+    return 0;
 }
 
 
-void init_Array(struct Array *key_array, size_t size) {
+int init_Array(struct Array *key_array, size_t size) {
     key_array->array = malloc(sizeof(key_array->array) * size);
     if (key_array->array == NULL) {
         perror("malloc");
-        exit(1);
+        return 1;
     }
     key_array->used = 0;
     key_array->size = size;
+    return 0;
 }
 
 
@@ -98,6 +105,7 @@ void push_Difference(struct Array *a, struct Array *b, struct Array *dest) {
 
 void free_Array(struct Array *key_array) {
     for (int i = 0; i < key_array->used; i++) {
+        free(key_array->array[i]->seed);
         free(key_array->array[i]);
     }
     free(key_array->array);
@@ -129,7 +137,7 @@ int resize_check(char *value, char **query, size_t *current_len, int *q_size) {
     }
     memcpy(*query + (*current_len), value, val_len + 1);
     *current_len += val_len;
-    sqlite3_free(value);
+
     return 0;
 }
 
@@ -176,6 +184,7 @@ int build_update_query(struct Array *update, char **query, int query_size) {
         if (resize_check(values, query, &current_len, &query_size) == 1) {
             return 1;
         }
+        sqlite3_free(values);
     }
 
     end_tx(query, &current_len);
@@ -199,6 +208,7 @@ int build_check_query(struct Array *check, char **query, int query_size) {
         if (resize_check(values, query, &current_len, &query_size) == 1) {
             return 1;
         }
+        sqlite3_free(values);
     }
     end_tx(query, &current_len);
     return 0;
