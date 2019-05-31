@@ -163,8 +163,10 @@ int main(int argc, char **argv) {
                 perror("malloc");
                 exit(1);
             }
-            fill_key_set(set, keys[j], seed, address_p2pkh,
-                            address_p2sh_p2wpkh, address_p2wpkh);
+            if (fill_key_set(set, keys[j], seed, address_p2pkh,
+                            address_p2sh_p2wpkh, address_p2wpkh) == 1) {
+                exit(1);
+            }
 
             #ifdef DEBUG
                 char pubkey_hex[sizeout];
