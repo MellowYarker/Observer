@@ -14,7 +14,7 @@
 */
 struct key_set {
     char private[MAX_BUF];
-    char seed[MAX_BUF];
+    char *seed;
     char p2pkh[SIZEOUT];
     char p2sh_p2wpkh[SIZEOUT];
     char p2wpkh[SIZEOUT];
@@ -49,12 +49,14 @@ int sort_seeds(char *orig, char *sorted);
 
 
 /* Fill the key_set set with the provided string arguements. */
-void fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh, 
+int fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh,
                   char *p2sh_p2wpkh, char *p2wpkh);
 
 
-/* Initializes an Array structure that will store key_set structs. */
-void init_Array(struct Array *key_array, size_t size);
+/*  Initializes an Array structure that will store key_set structs.
+    Returns 0 if it succeeds and 0 if it fails.
+*/
+int init_Array(struct Array *key_array, size_t size);
 
 
 /*  Add key_set set to the key_array. 
