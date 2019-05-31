@@ -49,13 +49,17 @@ int main(int argc, char **argv) {
 
     // array of keys to add to DB, default size is 20% of generated priv keys
     struct Array update;
-    init_Array(&update, ceil(generated * 0.2));
+    if (init_Array(&update, ceil(generated * 0.2)) == 1) {
+        exit(1);
+    }
     printf("Generating %d private keys per seed.\n", PRIVATE_KEY_TYPES);
 
     // array of keys that may or may not be in DB, must check. Default size is
     // 1% of generated priv keys, since the bloom filter has error rate of 1%
     struct Array check;
-    init_Array(&check, ceil(generated * 0.01));
+    if (init_Array(&check, ceil(generated * 0.01)) == 1) {
+        exit(1);
+    }
 
     /** Private Key Bloom Filter
      * 
@@ -207,7 +211,9 @@ int main(int argc, char **argv) {
 
     free_Array(&update); // no longer need these records
     // reallocate because we might fill with records that failed bloom filter
-    init_Array(&update, ceil(0.5 * check.used));
+    if (init_Array(&update, ceil(0.5 * check.used)) == 1) {
+        exit(1);
+    }
 
     // check database for records
     char *check_sql_query;
@@ -218,7 +224,9 @@ int main(int argc, char **argv) {
         }
 
         struct Array exists; // array of elements that were found in the db
-        init_Array(&exists, ceil(2 * check.used * 0.5)); // TODO: determine best size
+        if (init_Array(&exists, ceil(2 * check.used * 0.5)) == 1) {
+            exit(1);
+        }
 
         rc = sqlite3_exec(db, check_sql_query, callback, &exists, &zErrMsg);
         if (rc != SQLITE_OK ) {
