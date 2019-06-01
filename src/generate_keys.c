@@ -99,15 +99,36 @@ int main(int argc, char **argv) {
         sqlite3_finalize(stmt);
         // resize if we're at 80% of the expected entries
         if (records >= priv_bloom.entries * 0.8) {
-            printf("Resize Bloom filter!\n");
-            /*  1. Delete BF.
+            /*  1. Reset this bloom filter.
                 2. Read every record from db and write all priv keys to new BF.
-                3. Use new BF.
-
             */
-        } else {
-            printf("Bloom filter is large enough.\n");
+            size_t old = priv_bloom.entries;
+            printf("Resize Bloom filter!\n");
+            bloom_reset(&priv_bloom);
+
+            // TODO: I don't like depending on count, but we need to right now
+            bloom_init(&priv_bloom, (old * 2) + count, 0.01);
+            sqlite3_stmt *stmt; // reinitialize destroyed stmt
+
+            query = "SELECT privkey FROM keys;";
+            rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
+            if (rc != SQLITE_OK) {
+                printf("error: %s", sqlite3_errmsg(db));
+                exit(1);
+            }
+            char private[MAX_BUF];
+            while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+                strcpy(private, (char *) sqlite3_column_text (stmt, 0));
+
+                if (bloom_add(&priv_bloom, private, strlen(private)) < 0) {
+                    fprintf(stderr, "Bloom filter not initialized\n");
+                    exit(1);
+                }
+            }
+            printf("Finished resizing bloom filter.\n");
+            sqlite3_finalize(stmt);
         }
+
         sqlite3_close(db);
 
     } else {
@@ -206,6 +227,7 @@ int main(int argc, char **argv) {
 
     fclose(fname);
     bloom_save(&priv_bloom, "private_key_filter.b");
+    bloom_free(&priv_bloom);
     printf("Bloom filter caught %d records.\n", false_positive_count);
 
     // create the sql queries
