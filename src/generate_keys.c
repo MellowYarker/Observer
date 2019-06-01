@@ -74,6 +74,42 @@ int main(int argc, char **argv) {
     // check if the bloom filter exists
     if (access("private_key_filter.b", F_OK) != -1) {
         bloom_load(&priv_bloom, "private_key_filter.b");
+
+        // check if the bloom filter needs to be resized
+        sqlite3 *db;
+        // char *zErrMsg = 0;
+        int rc;
+        sqlite3_stmt *stmt;
+        char *query = "SELECT count() FROM keys;";
+
+        rc = sqlite3_open("../db/Observer.db", &db);
+
+        rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            printf("error: %s", sqlite3_errmsg(db));
+            exit(1);
+        }
+        size_t records = 0;
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+            records = sqlite3_column_int64 (stmt, 0);
+        }
+        if (rc != SQLITE_DONE) {
+            printf("error: %s", sqlite3_errmsg(db));
+        }
+        sqlite3_finalize(stmt);
+        // resize if we're at 80% of the expected entries
+        if (records >= priv_bloom.entries * 0.8) {
+            printf("Resize Bloom filter!\n");
+            /*  1. Delete BF.
+                2. Read every record from db and write all priv keys to new BF.
+                3. Use new BF.
+
+            */
+        } else {
+            printf("Bloom filter is large enough.\n");
+        }
+        sqlite3_close(db);
+
     } else {
         // TODO: should consider # of elements required. Leave at 1M for now.
         bloom_init2(&priv_bloom, 1000000, 0.01);
