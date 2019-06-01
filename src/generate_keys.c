@@ -129,9 +129,6 @@ int main(int argc, char **argv) {
             btc_pubkey_getaddr_p2sh_p2wpkh(&pubkey, chain, address_p2sh_p2wpkh);
             btc_pubkey_getaddr_p2wpkh(&pubkey, chain, address_p2wpkh);
 
-            // TODO: likely wasting a lot of space with seed, try to
-            // dynamically change the size later.
-
             struct key_set *set = malloc(sizeof(struct key_set));
             if (set == NULL) {
                 perror("malloc");
