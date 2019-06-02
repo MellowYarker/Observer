@@ -238,7 +238,7 @@ int main(int argc, char **argv) {
     free_Array(&update); // no longer need these records
     // array of records caught by bloom filter but not in db
     struct Array candidates;
-    if (init_Array(&candidates, ceil(0.5 * check.used) == 1) {
+    if (init_Array(&candidates, ceil(0.5 * check.used)) == 1) {
         exit(1);
     }
 
