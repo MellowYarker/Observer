@@ -44,13 +44,12 @@ int main(int argc, char **argv) {
     }
 
     const btc_chainparams* chain = &btc_chainparams_main; // mainnet
-    const long count = strtol(argv[1], NULL, 10); // # of seeds to use
+    const unsigned long count = strtol(argv[1], NULL, 10); // # of seeds to use
     const unsigned long generated = count * PRIVATE_KEY_TYPES;
 
     // array of keys to add to DB, default size is 20% of generated priv keys
     struct Array update;
     init_Array(&update, ceil(generated * 0.2));
-    printf("Generating %d private keys per seed.\n", PRIVATE_KEY_TYPES);
 
     // array of keys that may or may not be in DB, must check. Default size is
     // 1% of generated priv keys, since the bloom filter has error rate of 1%
@@ -74,6 +73,31 @@ int main(int argc, char **argv) {
     // check if the bloom filter exists
     if (access("private_key_filter.b", F_OK) != -1) {
         bloom_load(&priv_bloom, "private_key_filter.b");
+
+        // check if the bloom filter needs to be resized
+        sqlite3 *db;
+        int rc = sqlite3_open("../db/Observer.db", &db);
+        if (rc) {
+            fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+            exit(1);
+        }
+
+        size_t records = get_record_count(db);
+        if (records == -1) {
+            exit(1);
+        }
+
+        // resize if we're at 80% of the expected entries
+        if (records >= priv_bloom.entries * 0.8) {
+            printf("\nResizing bloom filter!\n");
+            if (resize_private_bloom(&priv_bloom, db, count) == 1) {
+                exit(1);
+            }
+            printf("Finished resizing bloom filter.\n");
+        }
+
+        sqlite3_close(db);
+
     } else {
         // TODO: should consider # of elements required. Leave at 1M for now.
         bloom_init2(&priv_bloom, 1000000, 0.01);
@@ -86,6 +110,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+    printf("Generating %d private keys per seed...\n", PRIVATE_KEY_TYPES);
     for (int i = 0; i < count; i++) {
         char seed[MAX_BUF];
         
@@ -170,6 +195,7 @@ int main(int argc, char **argv) {
 
     fclose(fname);
     bloom_save(&priv_bloom, "private_key_filter.b");
+    bloom_free(&priv_bloom);
     printf("Bloom filter caught %d records.\n", false_positive_count);
 
     // create the sql queries
@@ -226,8 +252,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "SQL error: %s\n", zErrMsg);
             sqlite3_free(zErrMsg);
         }
-        printf("%zu of the %zu records generated were already stored in the "\
-               "database.\n", exists.used, generated);
+        printf("\n%zu of the %d records caught by the bloom filter were already"\
+        " stored in the database.\n", exists.used, false_positive_count);
         free(check_sql_query);
         push_Difference(&exists, &check, &candidates);
         // see the wiki for details on freeing Array structs.

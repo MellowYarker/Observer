@@ -1,6 +1,8 @@
-
 #include <btc.h>
 #include <ecc_key.h>
+
+#include <bloom.h>
+
 #include <sqlite3.h>
 
 #define SIZEOUT 128
@@ -46,6 +48,19 @@ extern const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES];
     Returns 0 on success, 1 on failure.
 */
 int sort_seeds(char *orig, char *sorted);
+
+
+/*  On success, this returns the number of records in the database. If it fails,
+    it returns -1.
+*/
+size_t get_record_count(sqlite3 *db);
+
+
+/*  Reset the bloom filter, make it larger, and refill it with the records from
+    the database. Returns 0 on success, 1 on failure.
+*/
+int resize_private_bloom(struct bloom *filter, sqlite3 *db,
+                         unsigned long count);
 
 
 /* Fill the key_set set with the provided string arguements. */
