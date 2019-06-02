@@ -44,13 +44,12 @@ int main(int argc, char **argv) {
     }
 
     const btc_chainparams* chain = &btc_chainparams_main; // mainnet
-    const long count = strtol(argv[1], NULL, 10); // # of seeds to use
+    const unsigned long count = strtol(argv[1], NULL, 10); // # of seeds to use
     const unsigned long generated = count * PRIVATE_KEY_TYPES;
 
     // array of keys to add to DB, default size is 20% of generated priv keys
     struct Array update;
     init_Array(&update, ceil(generated * 0.2));
-    printf("Generating %d private keys per seed.\n", PRIVATE_KEY_TYPES);
 
     // array of keys that may or may not be in DB, must check. Default size is
     // 1% of generated priv keys, since the bloom filter has error rate of 1%
@@ -77,56 +76,24 @@ int main(int argc, char **argv) {
 
         // check if the bloom filter needs to be resized
         sqlite3 *db;
-        // char *zErrMsg = 0;
-        int rc;
-        sqlite3_stmt *stmt;
-        char *query = "SELECT count() FROM keys;";
-
-        rc = sqlite3_open("../db/Observer.db", &db);
-
-        rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
-        if (rc != SQLITE_OK) {
-            printf("error: %s", sqlite3_errmsg(db));
+        int rc = sqlite3_open("../db/Observer.db", &db);
+        if (rc) {
+            fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
             exit(1);
         }
-        size_t records = 0;
-        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-            records = sqlite3_column_int64 (stmt, 0);
+
+        size_t records = get_record_count(db);
+        if (records == -1) {
+            exit(1);
         }
-        if (rc != SQLITE_DONE) {
-            printf("error: %s", sqlite3_errmsg(db));
-        }
-        sqlite3_finalize(stmt);
+
         // resize if we're at 80% of the expected entries
         if (records >= priv_bloom.entries * 0.8) {
-            /*  1. Reset this bloom filter.
-                2. Read every record from db and write all priv keys to new BF.
-            */
-            size_t old = priv_bloom.entries;
             printf("\nResizing bloom filter!\n");
-            bloom_reset(&priv_bloom);
-
-            // TODO: I don't like depending on count, but we need to right now
-            bloom_init(&priv_bloom, (old * 2) + count, 0.01);
-            sqlite3_stmt *stmt; // reinitialize destroyed stmt
-
-            query = "SELECT privkey FROM keys;";
-            rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
-            if (rc != SQLITE_OK) {
-                printf("error: %s", sqlite3_errmsg(db));
+            if (resize_private_bloom(&priv_bloom, db, count) == 1) {
                 exit(1);
             }
-            char private[MAX_BUF];
-            while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-                strcpy(private, (char *) sqlite3_column_text (stmt, 0));
-
-                if (bloom_add(&priv_bloom, private, strlen(private)) < 0) {
-                    fprintf(stderr, "Bloom filter not initialized\n");
-                    exit(1);
-                }
-            }
             printf("Finished resizing bloom filter.\n");
-            sqlite3_finalize(stmt);
         }
 
         sqlite3_close(db);
@@ -143,7 +110,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    printf("\nGenerating keys...\n");
+    printf("Generating %d private keys per seed...\n", PRIVATE_KEY_TYPES);
     for (int i = 0; i < count; i++) {
         char seed[MAX_BUF];
         
