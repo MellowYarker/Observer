@@ -262,7 +262,10 @@ int main(int argc, char **argv) {
 
     // add records that had to be checked (if there are any)
     if (candidates.used > 0) {
-        // Remove duplicates from the candidates array
+        // Sort the candidates array then remove duplicates
+        qsort(candidates.array, candidates.used, sizeof(struct key_set *),
+              compare_key_sets_privkey);
+
         if (remove_duplicates(&candidates, &update) == 1) {
             fprintf(stderr, "Something went wrong while removing duplicate "\
             "records from the candidate array.\n");
