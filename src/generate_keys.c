@@ -206,8 +206,9 @@ int main(int argc, char **argv) {
     }
 
     free_Array(&update); // no longer need these records
-    // reallocate because we might fill with records that failed bloom filter
-    init_Array(&update, ceil(0.5 * check.used));
+    // array of records caught by bloom filter but not in db
+    struct Array candidates;
+    init_Array(&candidates, ceil(0.5 * check.used));
 
     // check database for records
     char *check_sql_query;
@@ -228,17 +229,30 @@ int main(int argc, char **argv) {
         printf("%zu of the %zu records generated were already stored in the "\
                "database.\n", exists.used, generated);
         free(check_sql_query);
-        push_Difference(&exists, &check, &update);
-        free_Array(&exists);
+        push_Difference(&exists, &check, &candidates);
+        // see the wiki for details on freeing Array structs.
+        free_Array(&exists); // <- has references to new key_sets, a valid free
     }
-    free_Array(&check);
 
     // add records that had to be checked (if there are any)
-    if (update.used > 0) {
+    if (candidates.used > 0) {
+        // Remove duplicates from the candidates array
+        if (remove_duplicates(&candidates, &update) == 1) {
+            fprintf(stderr, "Something went wrong while removing duplicate "\
+            "records from the candidate array.\n");
+            exit(1);
+        }
+
         if (prepare_query(&update, &update_sql_query, update_len, UPDATE) == 1){
             fprintf(stderr, "Failed to build query\n");
             exit(1);
         }
+        // This will free check, candidates, and update.
+        // This is because both candidates and update contain the key sets that
+        // are stored in check, free_Array frees all elements inside the Array.
+        free_Array(&check);
+        free(candidates.array);
+        free(update.array);
 
         rc = sqlite3_exec(db, update_sql_query, callback, 0, &zErrMsg);
         free(update_sql_query);
@@ -252,7 +266,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    free_Array(&update);
     sqlite3_close(db);
     end = clock();
     printf("\nTook %f seconds.\n", ((double) end - start)/CLOCKS_PER_SEC);
