@@ -103,6 +103,13 @@ void fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh,
 }
 
 
+int compare_key_sets_privkey(const void *p1, const void *p2){
+    struct key_set *a = *(struct key_set **) p1;
+    struct key_set *b = *(struct key_set **) p2;
+    return (strcmp(a->private, b->private));
+}
+
+
 void init_Array(struct Array *key_array, size_t size) {
     key_array->array = malloc(sizeof(key_array->array) * size);
     if (key_array->array == NULL) {
