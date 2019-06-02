@@ -103,7 +103,7 @@ int main(int argc, char **argv) {
                 2. Read every record from db and write all priv keys to new BF.
             */
             size_t old = priv_bloom.entries;
-            printf("Resize Bloom filter!\n");
+            printf("\nResizing bloom filter!\n");
             bloom_reset(&priv_bloom);
 
             // TODO: I don't like depending on count, but we need to right now
@@ -143,6 +143,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+    printf("\nGenerating keys...\n");
     for (int i = 0; i < count; i++) {
         char seed[MAX_BUF];
         
@@ -284,8 +285,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "SQL error: %s\n", zErrMsg);
             sqlite3_free(zErrMsg);
         }
-        printf("%zu of the %zu records generated were already stored in the "\
-               "database.\n", exists.used, generated);
+        printf("\n%zu of the %d records caught by the bloom filter were already"\
+        " stored in the database.\n", exists.used, false_positive_count);
         free(check_sql_query);
         push_Difference(&exists, &check, &candidates);
         // see the wiki for details on freeing Array structs.
