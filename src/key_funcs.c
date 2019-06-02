@@ -36,6 +36,63 @@ int sort_seeds(char *orig, char *sorted) {
 }
 
 
+size_t get_record_count(sqlite3 *db) {
+    char *query = "SELECT count() FROM keys;";
+    sqlite3_stmt *stmt;
+    int records = 0;
+
+    int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        printf("error: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        records = sqlite3_column_int64 (stmt, 0);
+    }
+    if (rc != SQLITE_DONE) {
+        printf("error: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return records;
+}
+
+
+int resize_private_bloom(struct bloom *filter, sqlite3 *db, unsigned long count)
+{
+    /*  1. Reset this bloom filter.
+        2. Read every record from db and write all priv keys to new BF.
+    */
+    size_t old = filter->entries;
+    bloom_reset(filter);
+
+    // TODO: I don't like depending on count, but we need to right now
+    bloom_init(filter, (old * 2) + count, 0.01);
+    sqlite3_stmt *stmt;
+
+    char *query = "SELECT privkey FROM keys;";
+    int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
+
+    if (rc != SQLITE_OK) {
+        printf("error: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    char private[MAX_BUF];
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        strcpy(private, (char *) sqlite3_column_text (stmt, 0));
+
+        if (bloom_add(filter, private, strlen(private)) < 0) {
+            fprintf(stderr, "Bloom filter not initialized\n");
+            return 1;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+
 void fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh, 
                   char *p2sh_p2wpkh, char *p2wpkh) {
     strcpy(set->private, private);
