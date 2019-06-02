@@ -72,7 +72,9 @@ void push_Array(struct Array *key_array, struct key_set *set) {
     key_array->array[key_array->used++] = set; // increment used, add to array
 }
 
-
+// TODO: If 38 records weren't found, and BF caugth 200k, we do 199,962 * 200,000 = 39,992,400,000 operations
+// try some kind of sorting method to make this faster because this isn't gonna cut it.
+// EDIT: sorting looks like it will take this from n**2 to n * log(n) [~1 mil ops]!!
 void push_Difference(struct Array *a, struct Array *b, struct Array *dest) {
     size_t count = 0;
     for (int i = 0; i < b->used; i++) {
@@ -102,6 +104,25 @@ void free_Array(struct Array *key_array) {
     }
     free(key_array->array);
 }
+
+
+int remove_duplicates(struct Array *src, struct Array *dest) {
+    // TODO: check return value here after merging GEN-6
+    init_Array(dest, (size_t) src->used * 0.5);
+
+    for (int i = 0; i < src->used; i++) {
+        // last element
+        if (i == src->used - 1) {
+            push_Array(dest, src->array[i]);
+        } else if (strcmp(src->array[i]->private, src->array[i + 1]->private)
+                   != 0) {
+            // add to dest if this element is unique
+            push_Array(dest, src->array[i]);
+        }
+    }
+    return 0;
+}
+
 
 void start_tx(char **query,  size_t *current_len) {
     char *begin = "BEGIN; ";

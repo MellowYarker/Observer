@@ -53,6 +53,8 @@ void fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh,
                   char *p2sh_p2wpkh, char *p2wpkh);
 
 
+/***  Array struct functions. ***/
+
 /* Initializes an Array structure that will store key_set structs. */
 void init_Array(struct Array *key_array, size_t size);
 
@@ -69,6 +71,11 @@ void push_Difference(struct Array *a, struct Array *b, struct Array *dest);
 
 /* Frees the key_array and all key_sets within it. */
 void free_Array(struct Array *key_array);
+
+/*  Populates dest with all elements from src, but makes sure elements are
+    unique. Returns 0 on success, 1 on failure.
+*/
+int remove_duplicates(struct Array *src, struct Array *dest);
 
 
 /*  Start of a database transaction. */
