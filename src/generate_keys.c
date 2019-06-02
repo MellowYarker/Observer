@@ -49,12 +49,17 @@ int main(int argc, char **argv) {
 
     // array of keys to add to DB, default size is 20% of generated priv keys
     struct Array update;
-    init_Array(&update, ceil(generated * 0.2));
+
+    if (init_Array(&update, ceil(generated * 0.2)) == 1) {
+        exit(1);
+    }
 
     // array of keys that may or may not be in DB, must check. Default size is
     // 1% of generated priv keys, since the bloom filter has error rate of 1%
     struct Array check;
-    init_Array(&check, ceil(generated * 0.01));
+    if (init_Array(&check, ceil(generated * 0.01)) == 1) {
+        exit(1);
+    }
 
     /** Private Key Bloom Filter
      * 
@@ -150,16 +155,15 @@ int main(int argc, char **argv) {
             btc_pubkey_getaddr_p2sh_p2wpkh(&pubkey, chain, address_p2sh_p2wpkh);
             btc_pubkey_getaddr_p2wpkh(&pubkey, chain, address_p2wpkh);
 
-            // TODO: likely wasting a lot of space with seed, try to
-            // dynamically change the size later.
-
             struct key_set *set = malloc(sizeof(struct key_set));
             if (set == NULL) {
                 perror("malloc");
                 exit(1);
             }
-            fill_key_set(set, keys[j], seed, address_p2pkh,
-                            address_p2sh_p2wpkh, address_p2wpkh);
+            if (fill_key_set(set, keys[j], seed, address_p2pkh,
+                            address_p2sh_p2wpkh, address_p2wpkh) == 1) {
+                exit(1);
+            }
 
             #ifdef DEBUG
                 char pubkey_hex[sizeout];
@@ -234,7 +238,9 @@ int main(int argc, char **argv) {
     free_Array(&update); // no longer need these records
     // array of records caught by bloom filter but not in db
     struct Array candidates;
-    init_Array(&candidates, ceil(0.5 * check.used));
+    if (init_Array(&candidates, ceil(0.5 * check.used)) == 1) {
+        exit(1);
+    }
 
     // check database for records
     char *check_sql_query;
@@ -245,7 +251,9 @@ int main(int argc, char **argv) {
         }
 
         struct Array exists; // array of elements that were found in the db
-        init_Array(&exists, ceil(2 * check.used * 0.5)); // TODO: determine best size
+        if (init_Array(&exists, ceil(2 * check.used * 0.5)) == 1) {
+            exit(1);
+        }
 
         rc = sqlite3_exec(db, check_sql_query, callback, &exists, &zErrMsg);
         if (rc != SQLITE_OK ) {
