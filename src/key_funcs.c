@@ -1,30 +1,130 @@
 #include "keys.h"
+
+#include <fcntl.h>
 #include <string.h>
+#include <unistd.h>
 
 
 const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES] = { &front_pad_pkey,
                                                               &back_pad_pkey/*,
                                                               &your_method */};
 
+int sort_seeds(char *orig, char *sorted) {
+    int r = fork();
 
-void fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh, 
+    if (r < 0) {
+        perror("fork");
+        return 1;
+    } else if (r == 0) {
+        int f = open(sorted, O_CREAT | O_WRONLY);
+
+        dup2(f, STDOUT_FILENO); // sort's output will write to original file
+        execl("/usr/bin/sort", "sort", "-u", orig, NULL);
+        exit(1);
+    } else {
+        int status;
+
+        wait(&status); // wait for sorting to finish
+        if (WEXITSTATUS(status) == 1) {
+            printf("Failed to sort seeds. Exiting.\n");
+            return 1;
+        } else {
+            printf("Sorted seed set stored in %s.\n", sorted);
+        }
+        return 0;
+    }
+}
+
+
+size_t get_record_count(sqlite3 *db) {
+    char *query = "SELECT count() FROM keys;";
+    sqlite3_stmt *stmt;
+    int records = 0;
+
+    int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        printf("error: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        records = sqlite3_column_int64 (stmt, 0);
+    }
+    if (rc != SQLITE_DONE) {
+        printf("error: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return records;
+}
+
+
+int resize_private_bloom(struct bloom *filter, sqlite3 *db, unsigned long count)
+{
+    /*  1. Reset this bloom filter.
+        2. Read every record from db and write all priv keys to new BF.
+    */
+    size_t old = filter->entries;
+    bloom_reset(filter);
+
+    // TODO: I don't like depending on count, but we need to right now
+    bloom_init(filter, (old * 2) + count, 0.01);
+    sqlite3_stmt *stmt;
+
+    char *query = "SELECT privkey FROM keys;";
+    int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
+
+    if (rc != SQLITE_OK) {
+        printf("error: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    char private[MAX_BUF];
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        strcpy(private, (char *) sqlite3_column_text (stmt, 0));
+
+        if (bloom_add(filter, private, strlen(private)) < 0) {
+            fprintf(stderr, "Bloom filter not initialized\n");
+            return 1;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+
+int fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh,
                   char *p2sh_p2wpkh, char *p2wpkh) {
+    set->seed = malloc(sizeof(char) * strlen(seed) + 1);
+    if (set->seed == NULL) {
+        perror("malloc");
+        return 1;
+    }
     strcpy(set->private, private);
     strcpy(set->seed, seed);
     strcpy(set->p2pkh, p2pkh);
     strcpy(set->p2sh_p2wpkh, p2sh_p2wpkh);
     strcpy(set->p2wpkh, p2wpkh);
+    return 0;
 }
 
 
-void init_Array(struct Array *key_array, size_t size) {
+int compare_key_sets_privkey(const void *p1, const void *p2){
+    struct key_set *a = *(struct key_set **) p1;
+    struct key_set *b = *(struct key_set **) p2;
+    return (strcmp(a->private, b->private));
+}
+
+
+int init_Array(struct Array *key_array, size_t size) {
     key_array->array = malloc(sizeof(key_array->array) * size);
     if (key_array->array == NULL) {
         perror("malloc");
-        exit(1);
+        return 1;
     }
     key_array->used = 0;
     key_array->size = size;
+    return 0;
 }
 
 
@@ -43,7 +143,9 @@ void push_Array(struct Array *key_array, struct key_set *set) {
     key_array->array[key_array->used++] = set; // increment used, add to array
 }
 
-
+// TODO: If 38 records weren't found, and BF caugth 200k, we do 199,962 * 200,000 = 39,992,400,000 operations
+// try some kind of sorting method to make this faster because this isn't gonna cut it.
+// EDIT: sorting looks like it will take this from n**2 to n * log(n) [~1 mil ops]!!
 void push_Difference(struct Array *a, struct Array *b, struct Array *dest) {
     size_t count = 0;
     for (int i = 0; i < b->used; i++) {
@@ -69,10 +171,30 @@ void push_Difference(struct Array *a, struct Array *b, struct Array *dest) {
 
 void free_Array(struct Array *key_array) {
     for (int i = 0; i < key_array->used; i++) {
+        free(key_array->array[i]->seed);
         free(key_array->array[i]);
     }
     free(key_array->array);
 }
+
+
+int remove_duplicates(struct Array *src, struct Array *dest) {
+    // TODO: check return value here after merging GEN-6
+    init_Array(dest, (size_t) src->used * 0.5);
+
+    for (int i = 0; i < src->used; i++) {
+        // last element
+        if (i == src->used - 1) {
+            push_Array(dest, src->array[i]);
+        } else if (strcmp(src->array[i]->private, src->array[i + 1]->private)
+                   != 0) {
+            // add to dest if this element is unique
+            push_Array(dest, src->array[i]);
+        }
+    }
+    return 0;
+}
+
 
 void start_tx(char **query,  size_t *current_len) {
     char *begin = "BEGIN; ";
@@ -100,7 +222,7 @@ int resize_check(char *value, char **query, size_t *current_len, int *q_size) {
     }
     memcpy(*query + (*current_len), value, val_len + 1);
     *current_len += val_len;
-    sqlite3_free(value);
+
     return 0;
 }
 
@@ -147,6 +269,7 @@ int build_update_query(struct Array *update, char **query, int query_size) {
         if (resize_check(values, query, &current_len, &query_size) == 1) {
             return 1;
         }
+        sqlite3_free(values);
     }
 
     end_tx(query, &current_len);
@@ -170,6 +293,7 @@ int build_check_query(struct Array *check, char **query, int query_size) {
         if (resize_check(values, query, &current_len, &query_size) == 1) {
             return 1;
         }
+        sqlite3_free(values);
     }
     end_tx(query, &current_len);
     return 0;

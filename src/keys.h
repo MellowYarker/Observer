@@ -1,6 +1,8 @@
-
 #include <btc.h>
 #include <ecc_key.h>
+
+#include <bloom.h>
+
 #include <sqlite3.h>
 
 #define SIZEOUT 128
@@ -14,7 +16,7 @@
 */
 struct key_set {
     char private[MAX_BUF];
-    char seed[MAX_BUF];
+    char *seed;
     char p2pkh[SIZEOUT];
     char p2sh_p2wpkh[SIZEOUT];
     char p2wpkh[SIZEOUT];
@@ -38,13 +40,46 @@ typedef void (*priv_func_ptr) (char *, char *, int);
 */
 extern const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES];
 
-/* Fill the key_set set with the provided string arguements. */
-void fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh, 
+
+/*  Sorts the input seed file and make sures there are no duplicates.
+    This helps us avoid poorly constructed database transactions, for example,
+    a transaction where we try to insert the same record twice.
+
+    Returns 0 on success, 1 on failure.
+*/
+int sort_seeds(char *orig, char *sorted);
+
+
+/*  On success, this returns the number of records in the database. If it fails,
+    it returns -1.
+*/
+size_t get_record_count(sqlite3 *db);
+
+
+/*  Reset the bloom filter, make it larger, and refill it with the records from
+    the database. Returns 0 on success, 1 on failure.
+*/
+int resize_private_bloom(struct bloom *filter, sqlite3 *db,
+                         unsigned long count);
+
+
+/*  Fill the key_set set with the provided string arguements.
+    Returns 0 if it succeeds and 1 if it fails.
+*/
+int fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh,
                   char *p2sh_p2wpkh, char *p2wpkh);
 
 
-/* Initializes an Array structure that will store key_set structs. */
-void init_Array(struct Array *key_array, size_t size);
+/* Compares the private keys of two key_set structs. */
+int compare_key_sets_privkey(const void *p1, const void *p2);
+
+
+/***  Array struct functions. ***/
+
+/*  Initializes an Array structure that will store key_set structs.
+    Returns 0 if it succeeds and 1 if it fails.
+*/
+int init_Array(struct Array *key_array, size_t size);
 
 
 /*  Add key_set set to the key_array. 
@@ -59,6 +94,11 @@ void push_Difference(struct Array *a, struct Array *b, struct Array *dest);
 
 /* Frees the key_array and all key_sets within it. */
 void free_Array(struct Array *key_array);
+
+/*  Populates dest with all elements from src, but makes sure elements are
+    unique. Returns 0 on success, 1 on failure.
+*/
+int remove_duplicates(struct Array *src, struct Array *dest);
 
 
 /*  Start of a database transaction. */
