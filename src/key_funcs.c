@@ -143,26 +143,39 @@ void push_Array(struct Array *key_array, struct key_set *set) {
     key_array->array[key_array->used++] = set; // increment used, add to array
 }
 
-// TODO: Currently takes (|A| * |B|) operations -- o(n**2)
-// Changing the algorithm should bring us closer to (|A| + |B|)  -- o(n)
+
 void push_Difference(struct Array *a, struct Array *b, struct Array *dest) {
+    size_t current_index = 0; // last index we searched to
     size_t count = 0;
+
+    // sort both Arrays
+    qsort(a->array, a->used, sizeof(struct key_set *), compare_key_sets_privkey);
+    qsort(b->array, b->used, sizeof(struct key_set *), compare_key_sets_privkey);
+
     for (int i = 0; i < b->used; i++) {
-        // no more records need to be checked
+        // no more elements to search for
         if (count == b->used - a->used) {
             break;
+        } else if (current_index == a->used - 1) {
+            // add all remaining because they're all greater than max in Array a
+            push_Array(dest, b->array[i]);
+            continue;
         }
-        int found = 0;
-        for (int j = 0; j < a->used; j++) {
-            // compare private keys
-            if (strcmp(b->array[i]->private, a->array[j]->private) == 0) {
-                found = 1;
+
+        int comp;
+        for (int j = current_index; j < a->used; j++) {
+            // exists in db, we don't want it
+            if ((comp = compare_key_sets_privkey(&(b->array[i]),
+                                                 &(a->array[j]))) == 0) {
+                current_index = j;
+                break;
+            } else if (comp < 0) {
+                // not in database, save it
+                current_index = j;
+                push_Array(dest, b->array[i]);
+                count++;
                 break;
             }
-        }
-        if (found == 0) {
-            push_Array(dest, b->array[i]);
-            count++;
         }
     }
 }
