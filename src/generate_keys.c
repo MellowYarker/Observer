@@ -265,7 +265,9 @@ int main(int argc, char **argv) {
         printf("\n%zu of the %d records caught by the bloom filter were "\
         "already stored in the database.\n", exists.used, false_positive_count);
         free(check_sql_query);
-        push_Difference(&exists, &check, &candidates);
+        if (exists.used > 0 && exists.used != check.used){
+            push_Difference(&exists, &check, &candidates);
+        }
         // see the wiki for details on freeing Array structs.
         free_Array(&exists); // <- has references to new key_sets, a valid free
     }
