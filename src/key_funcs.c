@@ -179,8 +179,9 @@ void free_Array(struct Array *key_array) {
 
 
 int remove_duplicates(struct Array *src, struct Array *dest) {
-    // TODO: check return value here after merging GEN-6
-    init_Array(dest, (size_t) src->used * 0.5);
+    if (init_Array(dest, (size_t) src->used * 0.5) == 2) {
+        return 1;
+    }
 
     for (int i = 0; i < src->used; i++) {
         // last element
