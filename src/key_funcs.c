@@ -6,7 +6,8 @@
 
 
 const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES] = { &front_pad_pkey,
-                                                              &back_pad_pkey/*,
+                                                              &back_pad_pkey,
+                                                              &sha256_pkey/*,
                                                               &your_method */};
 
 int sort_seeds(char *orig, char *sorted) {
@@ -143,27 +144,39 @@ void push_Array(struct Array *key_array, struct key_set *set) {
     key_array->array[key_array->used++] = set; // increment used, add to array
 }
 
-// TODO: If 38 records weren't found, and BF caugth 200k, we do 199,962 * 200,000 = 39,992,400,000 operations
-// try some kind of sorting method to make this faster because this isn't gonna cut it.
-// EDIT: sorting looks like it will take this from n**2 to n * log(n) [~1 mil ops]!!
+
 void push_Difference(struct Array *a, struct Array *b, struct Array *dest) {
+    size_t current_index = 0; // last index we searched to
     size_t count = 0;
+
+    // sort both Arrays
+    qsort(a->array, a->used, sizeof(struct key_set *), compare_key_sets_privkey);
+    qsort(b->array, b->used, sizeof(struct key_set *), compare_key_sets_privkey);
+
     for (int i = 0; i < b->used; i++) {
-        // no more records need to be checked
+        // no more elements to search for
         if (count == b->used - a->used) {
             break;
+        } else if (current_index == a->used - 1) {
+            // add all remaining because they're all greater than max in Array a
+            push_Array(dest, b->array[i]);
+            continue;
         }
-        int found = 0;
-        for (int j = 0; j < a->used; j++) {
-            // compare private keys
-            if (strcmp(b->array[i]->private, a->array[j]->private) == 0) {
-                found = 1;
+
+        int comp;
+        for (int j = current_index; j < a->used; j++) {
+            // exists in db, we don't want it
+            if ((comp = compare_key_sets_privkey(&(b->array[i]),
+                                                 &(a->array[j]))) == 0) {
+                current_index = j;
+                break;
+            } else if (comp < 0) {
+                // not in database, save it
+                current_index = j;
+                push_Array(dest, b->array[i]);
+                count++;
                 break;
             }
-        }
-        if (found == 0) {
-            push_Array(dest, b->array[i]);
-            count++;
         }
     }
 }
@@ -179,8 +192,9 @@ void free_Array(struct Array *key_array) {
 
 
 int remove_duplicates(struct Array *src, struct Array *dest) {
-    // TODO: check return value here after merging GEN-6
-    init_Array(dest, (size_t) src->used * 0.5);
+    if (init_Array(dest, (size_t) src->used * 0.5) == 2) {
+        return 1;
+    }
 
     for (int i = 0; i < src->used; i++) {
         // last element
@@ -345,17 +359,29 @@ char **seed_to_priv(char *seed, int len) {
 }
 
 
-void front_pad_pkey(char *seed, char *front_pad, int len) {
-    memset(front_pad, '0', (MAX_BUF - 1) - len);
-    front_pad[MAX_BUF - 1 - len] = '\0';
-    strncat(front_pad, seed, len);
+void front_pad_pkey(char *seed, char *buf, int len) {
+    memset(buf, '0', (MAX_BUF - 1) - len);
+    buf[MAX_BUF - 1 - len] = '\0';
+    strncat(buf, seed, len);
 }
 
 
-void back_pad_pkey(char *seed, char *back_pad, int len) {
-    strncpy(back_pad, seed, len);
-    memset(back_pad + len, '0', (MAX_BUF - 1) - len);
-    back_pad[MAX_BUF - 1] = '\0';
+void back_pad_pkey(char *seed, char *buf, int len) {
+    strncpy(buf, seed, len);
+    memset(buf + len, '0', (MAX_BUF - 1) - len);
+    buf[MAX_BUF - 1] = '\0';
+}
+
+
+void sha256_pkey(char *seed, char *buf, int len) {
+    uint256 bin;
+    // populates bin with 256 bit hash of seed
+    sha256_Raw((const unsigned char *) seed, len, bin);
+
+    // translate 256 bit bin array to 64 char hex and save the first 32 chars
+    strncpy(buf, utils_uint8_to_hex((const uint8_t*) bin,
+            BTC_ECKEY_PKEY_LENGTH), BTC_ECKEY_PKEY_LENGTH);
+    buf[MAX_BUF - 1] = '\0';
 }
 
 

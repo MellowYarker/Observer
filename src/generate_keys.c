@@ -92,8 +92,10 @@ int main(int argc, char **argv) {
             exit(1);
         }
 
-        // resize if we're at 80% of the expected entries
-        if (records >= priv_bloom.entries * 0.8) {
+        // resize if we're at 80% of the expected entries or if this run will
+        // top out the filter
+        if (records >= priv_bloom.entries * 0.8 ||
+            records + count >= priv_bloom.entries) {
             printf("\nResizing bloom filter!\n");
             if (resize_private_bloom(&priv_bloom, db, count) == 1) {
                 exit(1);
@@ -260,10 +262,12 @@ int main(int argc, char **argv) {
             fprintf(stderr, "SQL error: %s\n", zErrMsg);
             sqlite3_free(zErrMsg);
         }
-        printf("\n%zu of the %d records caught by the bloom filter were already"\
-        " stored in the database.\n", exists.used, false_positive_count);
+        printf("\n%zu of the %d records caught by the bloom filter were "\
+        "already stored in the database.\n", exists.used, false_positive_count);
         free(check_sql_query);
-        push_Difference(&exists, &check, &candidates);
+        if (exists.used > 0 && exists.used != check.used){
+            push_Difference(&exists, &check, &candidates);
+        }
         // see the wiki for details on freeing Array structs.
         free_Array(&exists); // <- has references to new key_sets, a valid free
     }
