@@ -6,7 +6,8 @@
 
 
 const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES] = { &front_pad_pkey,
-                                                              &back_pad_pkey/*,
+                                                              &back_pad_pkey,
+                                                              &sha256_pkey/*,
                                                               &your_method */};
 
 int sort_seeds(char *orig, char *sorted) {
@@ -358,17 +359,29 @@ char **seed_to_priv(char *seed, int len) {
 }
 
 
-void front_pad_pkey(char *seed, char *front_pad, int len) {
-    memset(front_pad, '0', (MAX_BUF - 1) - len);
-    front_pad[MAX_BUF - 1 - len] = '\0';
-    strncat(front_pad, seed, len);
+void front_pad_pkey(char *seed, char *buf, int len) {
+    memset(buf, '0', (MAX_BUF - 1) - len);
+    buf[MAX_BUF - 1 - len] = '\0';
+    strncat(buf, seed, len);
 }
 
 
-void back_pad_pkey(char *seed, char *back_pad, int len) {
-    strncpy(back_pad, seed, len);
-    memset(back_pad + len, '0', (MAX_BUF - 1) - len);
-    back_pad[MAX_BUF - 1] = '\0';
+void back_pad_pkey(char *seed, char *buf, int len) {
+    strncpy(buf, seed, len);
+    memset(buf + len, '0', (MAX_BUF - 1) - len);
+    buf[MAX_BUF - 1] = '\0';
+}
+
+
+void sha256_pkey(char *seed, char *buf, int len) {
+    uint256 bin;
+    // populates bin with 256 bit hash of seed
+    sha256_Raw((const unsigned char *) seed, len, bin);
+
+    // translate 256 bit bin array to 64 char hex and save the first 32 chars
+    strncpy(buf, utils_uint8_to_hex((const uint8_t*) bin,
+            BTC_ECKEY_PKEY_LENGTH), BTC_ECKEY_PKEY_LENGTH);
+    buf[MAX_BUF - 1] = '\0';
 }
 
 

@@ -1,5 +1,8 @@
 #include <btc.h>
 #include <ecc_key.h>
+#include <sha2.h>
+#include <utils.h>
+
 
 #include <bloom.h>
 
@@ -7,7 +10,7 @@
 
 #define SIZEOUT 128
 #define MAX_BUF BTC_ECKEY_PKEY_LENGTH + 1 // add a byte for the null terminator
-#define PRIVATE_KEY_TYPES 2 // # of private keys we generate from a given seed
+#define PRIVATE_KEY_TYPES 3 // # of private keys we generate from a given seed
 #define UPDATE 0
 #define CHECK 1
 
@@ -146,16 +149,22 @@ void remove_newline(char *s);
 char **seed_to_priv(char *seed, int len);
 
 
-/*  Puts the seed into the string front_pad then front pads it with 0's until
+/*  Puts the seed into the string buf then front pads it with 0's until
     there are 33 characters (including a null terminator).
 */
-void front_pad_pkey(char *seed, char *front_pad, int len);
+void front_pad_pkey(char *seed, char *buf, int len);
 
 
-/*  Puts the seed into the string front_pad then back pads it with 0's until
+/*  Puts the seed into the string buf then back pads it with 0's until
     there are 33 characters (including a null terminator).
 */
-void back_pad_pkey(char *seed, char *back_pad, int len);
+void back_pad_pkey(char *seed, char *buf, int len);
+
+
+/*  Puts the seed through sha256, then stores the first 32 characters of the
+    resulting hex string in buf.
+*/
+void sha256_pkey(char *seed, char *buf, int len);
 
 
 /*  Takes a buffer (private key string), an empty btc_key and empty btc_pubkey 
