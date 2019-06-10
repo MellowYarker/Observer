@@ -1,6 +1,6 @@
-# Observer - a Bitcoin address generator
+# Observer
 
-This software is designed to derive bitcoin addresses from *non-random* or *poorly generated* random private keys. These types of private keys are considered to be *weak*, and any bitcoin associated with these types of addresses are at risk of being stolen.
+This software is designed to derive bitcoin addresses from *non-random* or *poorly generated* random private keys. These types of private keys are considered to be *weak*; any bitcoin associated with these types of addresses are at risk of being stolen.
 
 ### Purpose
 Find and move bitcoin secured by weak keys before others with nefarious intentions try to, then offer the owner an easy and reliable way to reclaim the funds.
