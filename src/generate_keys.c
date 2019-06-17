@@ -199,7 +199,10 @@ int main(int argc, char **argv) {
     printf("\nTook %f seconds to generate %ld key sets.\n",
            ((double) end - start)/CLOCKS_PER_SEC, generated);
 
+    // close and delete sorted file
     fclose(fname);
+    remove(sorted);
+
     bloom_save(&priv_bloom, "private_key_filter.b");
     bloom_free(&priv_bloom);
     printf("Bloom filter caught %d records.\n", false_positive_count);
