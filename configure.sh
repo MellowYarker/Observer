@@ -20,6 +20,8 @@ make install
 echo "Installing libbloom..."
 cd ../../../libbloom
 make
+cd build
+rm *.dylib
 
 #   *note* since all these keys are really just integers, see if it's worth it to
 #   store them in the DB as numbers rather than varchars. Since we're at risk of
@@ -27,7 +29,7 @@ make
 
 # create sqlite3 database with keys table
 echo "Creating Observer database..."
-cd ../db
+cd ../../db
 db=observer.db
 
 if [ -f "$db" ]
