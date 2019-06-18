@@ -157,7 +157,7 @@ void push_Difference(struct Array *a, struct Array *b, struct Array *dest) {
         // no more elements to search for
         if (count == b->used - a->used) {
             break;
-        } else if (current_index == a->used - 1) {
+        } else if (current_index == a->used - 1 || a->used == 0) {
             // add all remaining because they're all greater than max in Array a
             push_Array(dest, b->array[i]);
             continue;
