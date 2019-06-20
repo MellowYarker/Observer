@@ -38,3 +38,10 @@ then
 else
     sqlite3 `$db` < configure.sql
 fi
+
+cd ../src
+pip3 install cython
+echo "Compiling Cython.."
+python3 setup.py build_ext --inplace
+echo "Searching blockchain for new addresses. You can do this via: python3 download.py"
+#python3 download.py
