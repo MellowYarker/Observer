@@ -10,21 +10,29 @@ from functions import update_db, get_addresses, check_download
 import pickle
 import requests
 import signal
-import sqlite3
 
 block = 0
 addresses = set()
 new_addresses = set()
 
-# TODO: we need to write to the database too
 def signal_handler(signal, frame):
+    """
+    Handles a SIGINT signal caused by ctrl + c.
+    When the script is killed, all progress will be saved.
+    """
+
     print("Saving work... last block scanned was {}".format(block))
     update_progress(block, addresses)
     update_db(new_addresses)
     exit(1)
 
-
 def update_progress(block, addresses):
+    """
+    block [int]: the latest block we've scanned
+    addresses [set]: the current set of unique addresses
+
+    Serialize the current block and address set for later use.
+    """
     try:
         fname = open("progress.b", "wb")
         obj = {'block': block, 'addresses': addresses}
@@ -54,7 +62,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
     print("Progress will be saved when you press \"ctrl + c\" or after all "
-        "addresses have been found. ")
+        "addresses have been found.")
 
 
     # make first request, then loop and check response

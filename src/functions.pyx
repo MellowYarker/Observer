@@ -1,7 +1,6 @@
 import sqlite3
 import requests
 cpdef update_db(set new_addresses):
-    # add to database
     db = "../db/observer.db"
     try:
         conn = sqlite3.connect(db)
@@ -10,7 +9,6 @@ cpdef update_db(set new_addresses):
         # build query
         start = "BEGIN;"
         cur.execute(start)
-        # only add new addresses to the database
         for i in new_addresses:
             sql = "INSERT INTO usedAddresses VALUES ('{}');".format(i)
             cur.execute(sql)
@@ -19,6 +17,8 @@ cpdef update_db(set new_addresses):
         cur.execute(end)
         conn.close()
     except ValueError as e:
+        # TODO: we should check if we failed the "unique" integrity constraint
+        #       and delete all records then run refill_db.py
         print(e)
 
 
