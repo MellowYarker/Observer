@@ -6,48 +6,71 @@ eventually.
 Addresses will be stored in Observer's database.
 Once all records have been written, they'll be added to a libbloom bloom filter.
 """
-
+from functions import update_db, get_addresses, check_download
+import pickle
 import requests
+import signal
 import sqlite3
 
-# current block height
 block = 0
-# use a set because we don't want to waste time sorting and making a list unique
 addresses = set()
+new_addresses = set()
 
-# make first request, then loop and check response
-url = "https://blockchain.info/block-height/{}?format=json".format(block)
-response = requests.get(url)
+# TODO: we need to write to the database too
+def signal_handler(signal, frame):
+    print("Saving work... last block scanned was {}".format(block))
+    update_progress(block, addresses)
+    update_db(new_addresses)
+    exit(1)
 
-while (response.json()['blocks'][0]['next_block'] != []):
-# for i in range(40): # uncomment for a test loop
-    # add all output addresses in this block to our used addresses set
-    # get the next block
-    block += 1
-    for i in response.json()['blocks'][0]['tx']:
-        for j in i['out']:
-            if 'addr' in j:
-                # we could check if in set then try to add to db here
-                addresses.add(j['addr'])
+
+def update_progress(block, addresses):
+    try:
+        fname = open("progress.b", "wb")
+        obj = {'block': block, 'addresses': addresses}
+        pickle.dump(obj, fname)
+        fname.close()
+    except IOError as e:
+        print(e)
+
+if __name__ == "__main__":
+    flag = False
+    try:
+        fname = open("progress.b", "rb")
+        progress = pickle.load(fname)
+        fname.close()
+    except IOError as e:
+        flag = True
+        print("Progress file will be created shortly.")
+
+    if flag == True:
+        print("Starting at block 0.")
+    else:
+        block = progress['block']
+        addresses = progress['addresses']
+        print("Starting at block {}".format(block))
+
+    # we start handling sigint here
+    signal.signal(signal.SIGINT, signal_handler)
+
+    print("Progress will be saved when you press \"ctrl + c\" or after all "
+        "addresses have been found. ")
+
+
+    # make first request, then loop and check response
     url = "https://blockchain.info/block-height/{}?format=json".format(block)
     response = requests.get(url)
+    try:
+        while (response.json()['blocks'][0]['next_block'] != []):
+            get_addresses(addresses, new_addresses, response)
+            block += 1
+            check_download(block)
+            url = "https://blockchain.info/block-height/{}?format=json".format(block)
+            response = requests.get(url)
+    except InterruptedError as e:
+        print(e)
+        print("Something went wrong. Saving work and exiting!")
 
-# add to database
-db = "../db/observer.db"
-try:
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-
-    # build query
-    start = "BEGIN;"
-    cur.execute(start)
-    for i in addresses:
-        sql = "INSERT INTO usedAddresses VALUES ('{}');".format(i)
-        cur.execute(sql)
-
-    end = "COMMIT;"
-    cur.execute(end)
-    conn.close()
-
-except ValueError as e:
-    print(e)
+    update_progress(block, addresses)
+    update_db(new_addresses)
+    print("Finished at block {}".format(block))

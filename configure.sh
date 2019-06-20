@@ -38,3 +38,8 @@ then
 else
     sqlite3 `$db` < configure.sql
 fi
+
+cd ../src
+echo "Compiling Cython.."
+python3 setup.py build_ext --inplace
+echo "To update the databse of used bitcoin addresses, run: python3 download.py"
