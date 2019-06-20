@@ -10,15 +10,13 @@ cpdef update_db(set new_addresses):
         start = "BEGIN;"
         cur.execute(start)
         for i in new_addresses:
-            sql = "INSERT INTO usedAddresses VALUES ('{}');".format(i)
+            sql = "INSERT OR IGNORE INTO usedAddresses VALUES ('{}');".format(i)
             cur.execute(sql)
 
         end = "COMMIT;"
         cur.execute(end)
         conn.close()
     except ValueError as e:
-        # TODO: we should check if we failed the "unique" integrity constraint
-        #       and delete all records then run refill_db.py
         print(e)
 
 

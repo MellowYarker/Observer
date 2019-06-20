@@ -42,4 +42,5 @@ fi
 cd ../src
 echo "Compiling Cython.."
 python3 setup.py build_ext --inplace
-echo "To update the databse of used bitcoin addresses, run: python3 download.py"
+echo "Searching blockchain for new addresses. You can do this via: python3 download.py"
+#python3 download.py
