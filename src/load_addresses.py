@@ -8,7 +8,7 @@
     have been found on the blockchain. Storing them here means you don't have to
     search the blockchain for all the addresses that have ever been used.
 """
-from functions import update_progress
+from functions import update_db, update_progress
 import os
 import pickle
 
@@ -17,8 +17,10 @@ try:
         block = int(f.readline())
         addresses = set()
         for i in f.readlines():
+            i = i[:-1] # removes newline
             addresses.add(i)
         update_progress(block, addresses)
+        update_db(addresses)
         os.remove("addresses.txt")
-except:
-    print("Something went wrong.")
+except IOError as e:
+    print(e)
