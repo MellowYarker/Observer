@@ -6,10 +6,11 @@ eventually.
 Addresses will be stored in Observer's database.
 Once all records have been written, they'll be added to a libbloom bloom filter.
 """
-from functions import update_db, get_addresses, check_download, update_progress
+from functions import check_download, get_addresses, update_db, update_progress
 import pickle
 import requests
 import signal
+from urllib3 import exceptions
 
 block = 0
 addresses = set()
@@ -61,7 +62,7 @@ if __name__ == "__main__":
             check_download(block)
             url = "https://blockchain.info/block-height/{}?format=json".format(block)
             response = requests.get(url)
-    except InterruptedError as e:
+    except exceptions.MaxRetryError as e:
         print(e)
         print("Something went wrong. Saving work and exiting!")
 
