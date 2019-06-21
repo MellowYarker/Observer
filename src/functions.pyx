@@ -1,5 +1,7 @@
-import sqlite3
+import pickle
 import requests
+import sqlite3
+
 cpdef update_db(set new_addresses):
     db = "../db/observer.db"
     try:
@@ -35,3 +37,18 @@ cpdef get_addresses(set addresses, set new_addresses, response):
 cpdef check_download(int block):
     if block % 100 == 0:
         print("Downloaded block {}".format(block))
+
+cpdef update_progress(int block, set addresses):
+    """
+    block [int]: the latest block we've scanned
+    addresses [set]: the current set of unique addresses
+
+    Serialize the current block and address set for later use.
+    """
+    try:
+        fname = open("progress.b", "wb")
+        obj = {'block': block, 'addresses': addresses}
+        pickle.dump(obj, fname)
+        fname.close()
+    except IOError as e:
+        print(e)
