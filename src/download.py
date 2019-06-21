@@ -6,7 +6,7 @@ eventually.
 Addresses will be stored in Observer's database.
 Once all records have been written, they'll be added to a libbloom bloom filter.
 """
-from functions import update_db, get_addresses, check_download
+from functions import update_db, get_addresses, check_download, update_progress
 import pickle
 import requests
 import signal
@@ -26,20 +26,6 @@ def signal_handler(signal, frame):
     update_db(new_addresses)
     exit(1)
 
-def update_progress(block, addresses):
-    """
-    block [int]: the latest block we've scanned
-    addresses [set]: the current set of unique addresses
-
-    Serialize the current block and address set for later use.
-    """
-    try:
-        fname = open("progress.b", "wb")
-        obj = {'block': block, 'addresses': addresses}
-        pickle.dump(obj, fname)
-        fname.close()
-    except IOError as e:
-        print(e)
 
 if __name__ == "__main__":
     flag = False
