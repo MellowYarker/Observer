@@ -1,26 +1,50 @@
-""" This script takes all the records in addresses.txt and stores them in binary
-    so that the download.py script can store them in Observers database.
-
-    This script should only be ran once. After completion we can probably delete
-    addresses.txt to free up some space, since address info is in progress.b
-
-    The addresses stored in addresses.txt are all unique bitcoin addresses that
-    have been found on the blockchain. Storing them here means you don't have to
-    search the blockchain for all the addresses that have ever been used.
 """
-from functions import update_db, update_progress
+    Insert all addresses from Amazon S3 into local Observer database.
+"""
+from functions import update_db
 import os
 import pickle
+import getopt
+import sys
+
+def setup():
+    """
+    Parses the command line arguements.
+
+    -f {file} where file is the progress file to use
+    """
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "f:db:")
+    except getopt.GetoptError as err:
+        print(err)
+        print("Usage: python3 load_addresses.py -f <progress file>")
+        return 0
+
+    progress_file = ""
+
+    # o is the flag, a is the arguement
+    for o, a in opts:
+        if o == "-f":
+            progress_file = a
+        else:
+            print("Unknown flag {}".format(o))
+    if (progress_file == ""):
+        return 0
+    return progress_file
 
 try:
-    with open("addresses.txt", "r") as f:
-        block = int(f.readline())
-        addresses = set()
-        for i in f.readlines():
-            i = i[:-1] # removes newline
-            addresses.add(i)
-        update_progress(block, addresses)
+    progress_file = setup()
+    if (progress_file == 0):
+        print("Please enter a file to load into the database.")
+        exit(1)
+
+    print("Loading addresses from {}".format(progress_file))
+    with open(progress_file, "rb") as f:
+        data = pickle.load(f)
+        addresses = f['addresses']
+        print("Updating database, this may take some time.")
         update_db(addresses)
-        os.remove("addresses.txt")
+        print("Upadte complete. Removing {}".format(progress_file))
+        # os.remove(progress_file)
 except IOError as e:
     print(e)
