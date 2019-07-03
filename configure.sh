@@ -43,7 +43,15 @@ cd ../src
 pip3 install cython
 echo "Compiling Cython.."
 python3 setup.py build_ext --inplace
-echo "Loading all used bitcoin addresses..."
-python3 load_addresses.py
-echo "Addresses loaded!"
-# nohup python3 download.py &
+# if you only care about UTxO, then you can skip this (eventually!)
+echo "Do you want to download all previously used addresses? (y/n):"
+read response
+if [ $response = "y" ]
+then
+    echo "Feature coming soon"
+    # download all the files from S3
+    # load the addresses into the database
+    #sh load.sh
+    # echo "Addresses loaded!"
+else
+    echo "Skipping download."
