@@ -44,14 +44,16 @@ pip3 install cython
 echo "Compiling Cython.."
 python3 setup.py build_ext --inplace
 # if you only care about UTxO, then you can skip this (eventually!)
-echo "Do you want to download all previously used addresses? (y/n):"
+echo "Do you want to download all addresses that have been used in the last ~584,000 blocks? (y/n):"
 read response
 if [ $response = "y" ]
 then
-    echo "Feature coming soon"
-    # download all the files from S3
+    mkdir address_sets
+    echo "Downloading addresses from S3, this will take some time."
+    sh s3_download.sh
     # load the addresses into the database
-    #sh load.sh
-    # echo "Addresses loaded!"
+    echo "Done! Loading addresses into sqlite3."
+    sh load.sh
+    echo "Addresses loaded!"
 else
-    echo "Skipping download."
+    echo "Skipping download. You can do this at a later time, just read over the configure.sh script."
