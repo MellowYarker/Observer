@@ -14,7 +14,7 @@ def setup():
     -f {file} where file is the progress file to use
     """
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "f:db:")
+        opts, args = getopt.getopt(sys.argv[1:], "f:")
     except getopt.GetoptError as err:
         print(err)
         print("Usage: python3 load_addresses.py -f <progress file>")
@@ -41,10 +41,16 @@ try:
     print("Loading addresses from {}".format(progress_file))
     with open(progress_file, "rb") as f:
         data = pickle.load(f)
-        addresses = f['addresses']
+        count = data["count"]
+        addresses = data["addresses"]
+        print("Found {} addresses in {}.".format(count, progress_file))
         print("Updating database, this may take some time.")
         update_db(addresses)
-        print("Upadte complete. Removing {}".format(progress_file))
-        # os.remove(progress_file)
+        print("Update complete. Removing {}".format(progress_file))
+        os.remove(progress_file)
 except IOError as e:
     print(e)
+except:
+    print("Something went wrong. You should re-run the script using the current file.")
+finally:
+    print("Exiting.")
