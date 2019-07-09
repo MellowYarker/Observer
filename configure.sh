@@ -39,7 +39,7 @@ else
     sqlite3 `$db` < configure.sql
 fi
 
-cd ../src
+cd ../src/init_download
 pip3 install cython
 echo "Compiling Cython.."
 python3 setup.py build_ext --inplace

@@ -3,7 +3,7 @@ import requests
 import sqlite3
 
 cpdef update_db(set new_addresses):
-    db = "../db/observer.db"
+    db = "../../db/observer.db"
     try:
         conn = sqlite3.connect(db)
         cur = conn.cursor()
