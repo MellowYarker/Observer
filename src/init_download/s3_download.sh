@@ -5,7 +5,7 @@ d=8
 e=7
 f=5
 
-get="wget -P address_sets_test https://observer-test-bucket.s3.amazonaws.com/address_sets/"
+get="wget -P address_sets-test https://observer-test-bucket.s3.amazonaws.com/address_sets/"
 for ((i=0;i<=a;i++)); do
     $get"a_$i.b"
 done;
