@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
 
         // check if the bloom filter needs to be resized
         sqlite3 *db;
-        int rc = sqlite3_open("../db/Observer.db", &db);
+        int rc = sqlite3_open("../db/observer.db", &db);
         if (rc) {
             fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
             exit(1);
@@ -212,7 +212,7 @@ int main(int argc, char **argv) {
     char *zErrMsg = 0;
     int rc;
 
-    rc = sqlite3_open("../db/Observer.db", &db);
+    rc = sqlite3_open("../db/observer.db", &db);
     if (rc) {
         fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
         exit(1);
