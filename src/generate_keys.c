@@ -106,8 +106,11 @@ int main(int argc, char **argv) {
         sqlite3_close(db);
 
     } else {
-        // TODO: should consider # of elements required. Leave at 1M for now.
-        bloom_init2(&priv_bloom, 1000000, 0.01);
+        if (count > 1000) {
+            bloom_init2(&priv_bloom, count * 2, 0.01);
+        } else {
+            bloom_init2(&priv_bloom, 1000, 0.01);
+        }
     }
 
     FILE *fname = fopen(sorted, "r");
@@ -199,7 +202,10 @@ int main(int argc, char **argv) {
     printf("\nTook %f seconds to generate %ld key sets.\n",
            ((double) end - start)/CLOCKS_PER_SEC, generated);
 
+    // close and delete sorted file
     fclose(fname);
+    remove(sorted);
+
     bloom_save(&priv_bloom, "private_key_filter.b");
     bloom_free(&priv_bloom);
     printf("Bloom filter caught %d records.\n", false_positive_count);
@@ -265,7 +271,8 @@ int main(int argc, char **argv) {
         printf("\n%zu of the %d records caught by the bloom filter were "\
         "already stored in the database.\n", exists.used, false_positive_count);
         free(check_sql_query);
-        if (exists.used > 0 && exists.used != check.used){
+        // fill candidates with all the elements that will be added to db
+        if (exists.used != check.used){
             push_Difference(&exists, &check, &candidates);
         }
         // see the wiki for details on freeing Array structs.
@@ -273,6 +280,7 @@ int main(int argc, char **argv) {
     }
 
     // add records that had to be checked (if there are any)
+    // ###TODO: there will be a memory leak if exists.used == check.used!###
     if (candidates.used > 0) {
         // Sort the candidates array then remove duplicates
         qsort(candidates.array, candidates.used, sizeof(struct key_set *),
