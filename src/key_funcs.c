@@ -4,6 +4,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifdef __linux__
+    #include <sys/types.h>
+    #include <sys/wait.h>
+#endif
+
 
 const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES] = { &front_pad_pkey,
                                                               &back_pad_pkey,
