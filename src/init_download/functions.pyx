@@ -4,22 +4,26 @@ import sqlite3
 
 cpdef update_db(set new_addresses):
     db = "../../db/observer.db"
+    cdef int size
+    cdef str address
+
     try:
         conn = sqlite3.connect(db)
         cur = conn.cursor()
+        size = len(new_addresses)
 
         # build query
-        start = "BEGIN;"
-        cur.execute(start)
-        for i in new_addresses:
-            sql = "INSERT OR IGNORE INTO usedAddresses VALUES ('{}');".format(i)
-            cur.execute(sql)
-
-        end = "COMMIT;"
-        cur.execute(end)
+        cur.execute("BEGIN;")
+        for i in range(size):
+            address = new_addresses.pop()
+            value = (address,)
+            cur.execute("INSERT OR IGNORE INTO usedAddresses VALUES (?)", value)
+        cur.execute("COMMIT;")
         conn.close()
     except ValueError as e:
         print(e)
+    except:
+        cur.execute("ROLLBACK;")
 
 
 cpdef get_addresses(set addresses, set new_addresses, response):
