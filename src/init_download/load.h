@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <bloom.h>
+
 struct node {
     char *data; // pointer to data
     struct node *next; // pointer to next node

@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
     struct bloom *filter;
     // assume we will insert about 550 million records 
     // Note: my db has 530M, I don't plan on increasing it
-    bloom_init2(filter, "used_address_filter.b", 550000000);
+    bloom_init2(filter, 550000000, 0.01);
 
     // set up linked list
     struct node *head = NULL;
@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "SQL error: %s\n", zErrMsg);
             sqlite3_free(zErrMsg);
         }
-        printf("Finished adding to linked list.\n")
+        printf("Finished adding to linked list.\n");
         offset += limit;
         // fill filter and save result
         batch_insert_filter(head, filter);
