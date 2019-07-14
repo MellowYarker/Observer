@@ -49,7 +49,7 @@ case "$response" in
         echo "kill -KILL <pid>"
         echo "For example, ps aux | grep load.sh"
         echo "Then ps aux | grep load_adresses.py"
-        sh load.sh &do_something
+        sh load.sh &
         ;;
     *)
         echo "Skipping download. You can do this at a later time, just read over the configure.sh script."
