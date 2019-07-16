@@ -3,7 +3,7 @@ flags = -Wall -std=gnu99 -O2
 libbloom = ../../libbloom
 
 load_filter: load.o
-	${CC} ${flags} -L${libbloom}/build -o $@ $< -lbloom -lsqlite3
+	${CC} ${flags} -o $@ $< -L${libbloom}/build -l:libbloom.a -lm -lsqlite3
 
-%.o: load.c
+load.o: load.c
 	${CC} -I${libbloom} -c $< -o $@

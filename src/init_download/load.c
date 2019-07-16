@@ -56,7 +56,7 @@ void batch_insert_filter(struct node *head, struct bloom *filter) {
         cur = next; // cur is now the next node
     }
     // cur (the head) is NULL
-    bloom_save(filter, "used_address_filter.b");
+    bloom_save(filter, "../used_address_filter.b");
 }
 
 int main(int argc, char **argv) {
