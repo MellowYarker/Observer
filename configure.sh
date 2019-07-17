@@ -27,10 +27,8 @@ if [ -f "$db" ]
 then
     echo "$db already exists."
 else
-    sqlite3 $db < configure.sql
+    sudo sqlite3 $db < configure.sql
 fi
-# make db writeable
-sudo chmod 664 $db
 
 cd ../src/init_download
 pip3 install cython
@@ -40,15 +38,10 @@ python3 setup.py build_ext --inplace
 read -r -p "Do you want to download all addresses that have been used in the last ~584,000 blocks? (y/n):" response
 case "$response" in
     [yY][eE][sS]|[yY]) 
-        mkdir address_sets
         echo "Downloading addresses from S3, this will take some time."
         sh s3_download.sh
         # load the addresses into the database
-        echo "Done! Loading addresses into sqlite3, this will take a while so it will be run in the background."
-        echo "If at any point you want to quit, just find the process and kill it via"
-        echo "kill -KILL <pid>"
-        echo "For example, ps aux | grep load.sh"
-        echo "Then ps aux | grep load_adresses.py"
+        echo "Done! Loading addresses into database... This will take at least several hours, but more likely a few days. Please keep your computer on until this process completes."
         sh load.sh &
         ;;
     *)
