@@ -2,6 +2,7 @@
 
 #include <bloom.h>
 #include <sqlite3.h>
+#include <time.h>
 
 
 // Addresses can range from 28-42 characters, we will add them to a linked list.
@@ -61,10 +62,11 @@ void batch_insert_filter(struct node *head, struct bloom *filter) {
 
 int main(int argc, char **argv) {
     // set up bloom filter
-    struct bloom *filter;
+    struct bloom filter;
     // assume we will insert about 550 million records 
     // Note: my db has 530M, I don't plan on increasing it
-    bloom_init2(filter, 550000000, 0.01);
+    int records = 550000000;
+    bloom_init2(&filter, records, 0.01);
 
     // set up linked list
     struct node *head = NULL;
@@ -73,6 +75,7 @@ int main(int argc, char **argv) {
     int limit = 27500000; // only store 27.5 million addresses (~1GB) at a time.
     int offset = 0; // start from 0, this indicates where to start reading in db
     char *query;
+    clock_t start, end; // times the execution
 
     sqlite3 *db;
     char *zErrMsg = 0;
@@ -82,29 +85,41 @@ int main(int argc, char **argv) {
     if (rc) {
         fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
         exit(1);
+    } else {
+        printf("Opened database connection!\n");
     }
     // Note: we use 20 here because my database has a little over 530 million
     // records. ceil(530,029,220/27,500,000) = ceil(19.27) = 20
     for (int i = 0; i < 20; i++) {
-        query = sqlite3_mprintf("SELECT * FROM usedAddresses LIMIT '%q' "\
-                                      "OFFSET '%q'; ", limit, offset);
+        printf("Adding addresses %d to %d.\n", offset, offset + limit);
+        query = sqlite3_mprintf("SELECT * FROM usedAddresses LIMIT %d OFFSET %d;", limit, offset);
         if (query == NULL) {
             fprintf(stderr, "Could not allocate memory for query.");
             exit(1);
         }
+
+        start = clock();
 
         rc = sqlite3_exec(db, query, callback, head, &zErrMsg);
         if (rc != SQLITE_OK ) {
             fprintf(stderr, "SQL error: %s\n", zErrMsg);
             sqlite3_free(zErrMsg);
         }
-        printf("Finished adding to linked list.\n");
+        end = clock();
+        printf("Took %f seconds to get batch %d records and add "\
+               "them to the linked list.\n", 
+               ((double) end - start)/CLOCKS_PER_SEC, i);
         offset += limit;
-        // fill filter and save result
-        batch_insert_filter(head, filter);
-        printf("Finished updating bloom filter!\n");
-    }
 
-    bloom_free(filter);
+        start = clock();
+        // fill filter and save result
+        batch_insert_filter(head, &filter);
+        end = clock();
+        printf("Took %f seconds to add batch %d to the bloom filter.\n", 
+               ((double) end - start)/CLOCKS_PER_SEC, i);
+    }
+    printf("Process complete.\n");
+
+    bloom_free(&filter);
     return 0;
 }
