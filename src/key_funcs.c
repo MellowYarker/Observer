@@ -69,7 +69,7 @@ int resize_private_bloom(struct bloom *filter, sqlite3 *db, unsigned long count)
     bloom_reset(filter);
 
     // TODO: I don't like depending on count, but we need to right now
-    bloom_init(filter, (old * 2) + count, 0.01);
+    bloom_init2(filter, (old * 2) + count, 0.01);
     sqlite3_stmt *stmt;
 
     char *query = "SELECT privkey FROM keys;";
