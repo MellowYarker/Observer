@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
 
         // check if the bloom filter needs to be resized
         sqlite3 *db;
-        int rc = sqlite3_open("../db/Observer.db", &db);
+        int rc = sqlite3_open("../db/observer.db", &db);
         if (rc) {
             fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
             exit(1);
@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
     char *zErrMsg = 0;
     int rc;
 
-    rc = sqlite3_open("../db/Observer.db", &db);
+    rc = sqlite3_open("../db/observer.db", &db);
     if (rc) {
         fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
         exit(1);
@@ -274,13 +274,15 @@ int main(int argc, char **argv) {
         // fill candidates with all the elements that will be added to db
         if (exists.used != check.used){
             push_Difference(&exists, &check, &candidates);
+        } else {
+            // all records were found in the database
+            free_Array(&check);
         }
         // see the wiki for details on freeing Array structs.
         free_Array(&exists); // <- has references to new key_sets, a valid free
     }
 
     // add records that had to be checked (if there are any)
-    // ###TODO: there will be a memory leak if exists.used == check.used!###
     if (candidates.used > 0) {
         // Sort the candidates array then remove duplicates
         qsort(candidates.array, candidates.used, sizeof(struct key_set *),
@@ -296,12 +298,9 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Failed to build query\n");
             exit(1);
         }
-        // This will free check, candidates, and update.
-        // This is because both candidates and update contain the key sets that
-        // are stored in check, free_Array frees all elements inside the Array.
+        // freeing check will free all records in candidates and update as well.
+        // They all share pointers. See the wiki.
         free_Array(&check);
-        free(candidates.array);
-        free(update.array);
 
         rc = sqlite3_exec(db, update_sql_query, callback, 0, &zErrMsg);
         free(update_sql_query);
@@ -313,10 +312,17 @@ int main(int argc, char **argv) {
             printf("Wrote an additional %zu records to the keys table.\n",
                    update.used);
         }
+        // We only need to free the pointers to the arrays in 
+        // candidates and check.
+        candidates.used = 0;
+        update.used = 0;
+        free_Array(&update);
     }
 
+    free_Array(&candidates); // candidates::used is always 0 here.
     sqlite3_close(db);
     end = clock();
+    btc_ecc_stop();
     printf("\nTook %f seconds.\n", ((double) end - start)/CLOCKS_PER_SEC);
 
     return 0;
