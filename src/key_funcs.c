@@ -141,7 +141,7 @@ void push_Array(struct Array *key_array, struct key_set *set) {
                                    sizeof(struct key_set *) * key_array->size * 
                                    2);
         if (key_array == NULL) {
-            perror("malloc");
+            perror("realloc");
             exit(1);
         }
         key_array->size *= 2;
