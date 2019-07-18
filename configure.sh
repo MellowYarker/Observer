@@ -5,38 +5,29 @@
 # set up, compile, and install libbtc
 echo "Installing libbtc..."
 cd libbtc
-./autogen.sh
-./configure --disable-wallet --disable-tools
-make check
-make install
-
-# compile and install secp256k1
-echo "Installing secp256k1..."
-cd src/secp256k1
-make
-make install
+sudo ./autogen.sh
+sudo ./configure --disable-net # looks like we cannot --disable-wallet on linux
+sudo make
+# sudo make check # double check this
+# make install # we don't need to install it anymore
 
 # compile libbloom
 echo "Installing libbloom..."
-cd ../../../libbloom
-make
-cd build
-rm *.dylib
+cd ../libbloom
+sudo make
 
-#   *note* since all these keys are really just integers, see if it's worth it to
-#   store them in the DB as numbers rather than varchars. Since we're at risk of
-#   performing a lot of DB reads, it might make look up faster.
+# could delete symlinks and just rename the .so/.dylib to what ld wants.
 
 # create sqlite3 database with keys table
 echo "Creating Observer database..."
-cd ../../db
+cd ../db
 db=observer.db
 
 if [ -f "$db" ]
 then
     echo "$db already exists."
 else
-    sqlite3 `$db` < configure.sql
+    sudo sqlite3 $db < configure.sql
 fi
 
 cd ../src/init_download
@@ -44,19 +35,18 @@ pip3 install cython
 echo "Compiling Cython.."
 python3 setup.py build_ext --inplace
 # if you only care about UTxO, then you can skip this (eventually!)
-echo "Do you want to download all addresses that have been used in the last ~584,000 blocks? (y/n):"
-read response
-if [ $response = "y" ]
-then
-    mkdir address_sets
-    echo "Downloading addresses from S3, this will take some time."
-    sh s3_download.sh
-    # load the addresses into the database
-    echo "Done! Loading addresses into sqlite3, this will take a while so it will be run in the background."
-    echo "If at any point you want to quit, just find the process and kill it via"
-    echo "kill -KILL <pid>"
-    echo "For example, ps aux | grep load.sh"
-    echo "Then ps aux | grep load_adresses.py"
-    sh load.sh &
-else
-    echo "Skipping download. You can do this at a later time, just read over the configure.sh script."
+read -r -p "Do you want to download all addresses that have been used in the last ~584,000 blocks? (y/n):" response
+case "$response" in
+    [yY][eE][sS]|[yY]) 
+        echo "Downloading addresses from S3, this will take some time."
+        sh s3_download.sh
+        # load the addresses into the database
+        echo "Done! Loading addresses into database... This will take at least several hours, but more likely a few days. Please keep your computer on until this process completes."
+        sh load.sh &
+        ;;
+    *)
+        echo "Skipping download. You can do this at a later time, just read over the configure.sh script."
+        ;;
+esac
+
+echo "Done."
