@@ -7,7 +7,7 @@ CREATE TABLE keys(
 );
 
 CREATE TABLE usedAddresses(
-    address VARCHAR(34) PRIMARY KEY
+    address VARCHAR(48) PRIMARY KEY
 );
 
 /*We will probably want 2 more tables.

@@ -14,7 +14,7 @@ sudo make
 # compile libbloom
 echo "Installing libbloom..."
 cd ../libbloom
-make
+sudo make
 
 # could delete symlinks and just rename the .so/.dylib to what ld wants.
 
