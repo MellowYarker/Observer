@@ -26,7 +26,7 @@
 
 #include "btc.h"
 
-#include <chainparams.h>
+#include "chainparams.h"
 
 #include <stdint.h>
 

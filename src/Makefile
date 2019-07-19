@@ -1,13 +1,13 @@
-CC = gcc
-FLAGS = -Wall -g -std=gnu99 -O
-DEBUG = -DDEBUG
-BLOOM = ../libbloom
-STATIC_BLOOM = ${BLOOM}/build
+libbloom = ../libbloom
+STATIC_BLOOM = ${libbloom}/build
+libbtc = ../libbtc
+flags = -g -O2 -W -std=gnu99 -pedantic -Wno-unused-function -Wno-long-long \
+		-Wno-overlength-strings
+libs = ${libbtc}/libbtc.la -L${STATIC_BLOOM} -lbloom -lsqlite3 -lm
 
-gen_keys: generate_keys.c key_funcs.c
-	${CC} ${FLAGS} `pkg-config --cflags --libs ../libbtc/libbtc.pc` -lsqlite3 \
-	-I ${BLOOM} -L${STATIC_BLOOM} -lbloom -o $@ $^
+gen_keys: generate_keys.o key_funcs.o
+	${libbtc}/libtool --silent --tag=CC --mode=link gcc ${flags} -static \
+	-o $@ $^ ${libs}
 
-debug: generate_keys.c key_funcs.c
-	${CC} ${FLAGS} ${DEBUG} `pkg-config --cflags --libs ../libbtc/libbtc.pc` \
-	-lsqlite3 -I ${BLOOM} -L${STATIC_BLOOM} -lbloom -o gen_keys $^
+%.o: %.c
+	gcc -I${libbtc}/include/btc -I${libbloom} -c $< -o $@

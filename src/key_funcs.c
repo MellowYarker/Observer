@@ -4,6 +4,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifdef __linux__
+    #include <sys/types.h>
+    #include <sys/wait.h>
+#endif
+
 
 const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES] = { &front_pad_pkey,
                                                               &back_pad_pkey,
@@ -69,7 +74,7 @@ int resize_private_bloom(struct bloom *filter, sqlite3 *db, unsigned long count)
     bloom_reset(filter);
 
     // TODO: I don't like depending on count, but we need to right now
-    bloom_init(filter, (old * 2) + count, 0.01);
+    bloom_init2(filter, (old * 2) + count, 0.01);
     sqlite3_stmt *stmt;
 
     char *query = "SELECT privkey FROM keys;";
@@ -136,7 +141,7 @@ void push_Array(struct Array *key_array, struct key_set *set) {
                                    sizeof(struct key_set *) * key_array->size * 
                                    2);
         if (key_array == NULL) {
-            perror("malloc");
+            perror("realloc");
             exit(1);
         }
         key_array->size *= 2;
@@ -157,7 +162,7 @@ void push_Difference(struct Array *a, struct Array *b, struct Array *dest) {
         // no more elements to search for
         if (count == b->used - a->used) {
             break;
-        } else if (current_index == a->used - 1) {
+        } else if (current_index == a->used - 1 || a->used == 0) {
             // add all remaining because they're all greater than max in Array a
             push_Array(dest, b->array[i]);
             continue;
