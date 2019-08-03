@@ -35,7 +35,7 @@ int sort_seeds(char *orig, char *sorted) {
             printf("Failed to sort seeds. Exiting.\n");
             return 1;
         } else {
-            printf("Sorted seed set stored in %s.\n", sorted);
+            printf("Finished sorting seeds.\n");
         }
         return 0;
     }
@@ -65,19 +65,27 @@ size_t get_record_count(sqlite3 *db) {
 }
 
 
-int resize_private_bloom(struct bloom *filter, sqlite3 *db, unsigned long count)
-{
-    /*  1. Reset this bloom filter.
-        2. Read every record from db and write all priv keys to new BF.
+int resize_bloom_filters(struct bloom *private_filter, struct bloom *addr_filter,
+                         sqlite3 *db, unsigned long count) {
+    /*  1. Reset the bloom filters.
+        2. Read every record from db and write all priv keys and addrs to new BF.
     */
-    size_t old = filter->entries;
-    bloom_reset(filter);
+
+    // previous # of entries needed to resize
+    size_t private_old = private_filter->entries;
+    size_t addr_old = addr_filter->entries;
+
+    // clear the filters so we can fill them from scratch
+    bloom_reset(private_filter);
+    bloom_reset(addr_filter);
 
     // TODO: I don't like depending on count, but we need to right now
-    bloom_init2(filter, (old * 2) + count, 0.01);
+    bloom_init2(private_filter, (private_old * 2) + count, 0.01);
+    bloom_init2(addr_filter, (addr_old * 2) + count, 0.01);
+
     sqlite3_stmt *stmt;
 
-    char *query = "SELECT privkey FROM keys;";
+    char *query = "SELECT privkey, P2PKH, P2SH, P2WPKH FROM keys;";
     int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
 
     if (rc != SQLITE_OK) {
@@ -85,51 +93,24 @@ int resize_private_bloom(struct bloom *filter, sqlite3 *db, unsigned long count)
         return -1;
     }
 
+    // where we will store our records
     char private[MAX_BUF];
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        strcpy(private, (char *) sqlite3_column_text (stmt, 0));
-
-        if (bloom_add(filter, private, strlen(private)) < 0) {
-            fprintf(stderr, "Bloom filter not initialized\n");
-            return 1;
-        }
-    }
-    sqlite3_finalize(stmt);
-    return 0;
-}
-
-int resize_address_bloom(struct bloom *filter, sqlite3 *db, unsigned long count)
-{
-    /*  1. Reset this bloom filter.
-        2. Read every record from db an dwrite all addresses to new BF.
-    */
-    size_t old = filter->entries;
-    bloom_reset(filter);
-
-    // TODO: I don't like depending on count, but we need to right now.
-    bloom_init2(filter, (old * 2) + count, 0.01);
-    sqlite3_stmt *stmt;
-
-    char *query = "SELECT P2PKH, P2SH, P2WPKH FROM keys;";
-    int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
-
-    if (rc != SQLITE_OK) {
-        printf("error: %s", sqlite3_errmsg(db));
-        return -1;
-    }
-
     char p2pkh[SIZEOUT];
     char p2sh_p2wpkh[SIZEOUT];
     char p2wpkh[SIZEOUT];
 
+    // Read all the records from the database.
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        strcpy(p2pkh, (char *) sqlite3_column_text (stmt, 0));
-        strcpy(p2sh_p2wpkh, (char *) sqlite3_column_text (stmt, 1));
-        strcpy(p2wpkh, (char *) sqlite3_column_text (stmt, 2));
+        strcpy(private, (char *) sqlite3_column_text (stmt, 0));
+        strcpy(p2pkh, (char *) sqlite3_column_text (stmt, 1));
+        strcpy(p2sh_p2wpkh, (char *) sqlite3_column_text (stmt, 2));
+        strcpy(p2wpkh, (char *) sqlite3_column_text (stmt, 3));
 
-        if (bloom_add(filter, p2pkh, strlen(p2pkh)) < 0 ||
-            bloom_add(filter, p2sh_p2wpkh, strlen(p2sh_p2wpkh)) < 0 ||
-            bloom_add(filter, p2wpkh, strlen(p2wpkh)) < 0) {
+        // Add the record's attributes to the respective filters.
+        if (bloom_add(private_filter, private, strlen(private)) < 0 ||
+            bloom_add(addr_filter, p2pkh, strlen(p2pkh)) < 0 ||
+            bloom_add(addr_filter, p2sh_p2wpkh, strlen(p2sh_p2wpkh)) < 0 ||
+            bloom_add(addr_filter, p2wpkh, strlen(p2wpkh)) < 0) {
             fprintf(stderr, "bloom filter not initialized\n");
             return 1;
         }

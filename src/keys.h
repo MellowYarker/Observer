@@ -59,17 +59,12 @@ int sort_seeds(char *orig, char *sorted);
 size_t get_record_count(sqlite3 *db);
 
 
-/*  Reset the private bloom filter, make it larger, and refill it with the records
+/*  Reset the bloom filters, resize them, and refill them with the records
     from the database. Returns 0 on success, 1 on failure.
 */
-int resize_private_bloom(struct bloom *filter, sqlite3 *db,
-                         unsigned long count);
+int resize_bloom_filters(struct bloom *private_filter, struct bloom *addr_filter,
+                         sqlite3 *db, unsigned long count);
 
-/*  Reset the addresses bloom filter, make it larger, and refill it with the
-    records from the database. Returns 0 on success, 1 on failure.
-*/
-int resize_address_bloom(struct bloom *filter, sqlite3 *db,
-                        unsigned long count);
 
 /*  Fill the key_set set with the provided string arguements.
     Returns 0 if it succeeds and 1 if it fails.
