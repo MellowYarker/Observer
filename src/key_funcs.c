@@ -98,6 +98,46 @@ int resize_private_bloom(struct bloom *filter, sqlite3 *db, unsigned long count)
     return 0;
 }
 
+int resize_address_bloom(struct bloom *filter, sqlite3 *db, unsigned long count)
+{
+    /*  1. Reset this bloom filter.
+        2. Read every record from db an dwrite all addresses to new BF.
+    */
+    size_t old = filter->entries;
+    bloom_reset(filter);
+
+    // TODO: I don't like depending on count, but we need to right now.
+    bloom_init2(filter, (old * 2) + count, 0.01);
+    sqlite3_stmt *stmt;
+
+    char *query = "SELECT P2PKH, P2SH, P2WPKH FROM keys;";
+    int rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
+
+    if (rc != SQLITE_OK) {
+        printf("error: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    char p2pkh[SIZEOUT];
+    char p2sh_p2wpkh[SIZEOUT];
+    char p2wpkh[SIZEOUT];
+
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        strcpy(p2pkh, (char *) sqlite3_column_text (stmt, 0));
+        strcpy(p2sh_p2wpkh, (char *) sqlite3_column_text (stmt, 1));
+        strcpy(p2wpkh, (char *) sqlite3_column_text (stmt, 2));
+
+        if (bloom_add(filter, p2pkh, strlen(p2pkh)) < 0 ||
+            bloom_add(filter, p2sh_p2wpkh, strlen(p2sh_p2wpkh)) < 0 ||
+            bloom_add(filter, p2wpkh, strlen(p2wpkh)) < 0) {
+            fprintf(stderr, "bloom filter not initialized\n");
+            return 1;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
 
 int fill_key_set(struct key_set *set, char *private, char *seed, char *p2pkh,
                   char *p2sh_p2wpkh, char *p2wpkh) {
