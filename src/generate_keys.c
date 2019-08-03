@@ -45,6 +45,7 @@ int main(int argc, char **argv) {
 
     const btc_chainparams* chain = &btc_chainparams_main; // mainnet
     const unsigned long count = strtol(argv[1], NULL, 10); // # of seeds to use
+    // "generated" is the number of keys we will generate. This is important!
     const unsigned long generated = count * PRIVATE_KEY_TYPES;
 
     // array of keys to add to DB, default size is 20% of generated priv keys
@@ -73,6 +74,7 @@ int main(int argc, char **argv) {
      *         the database. Therefore, we pass the private keys to the filter.
     **/
     struct bloom priv_bloom;
+    struct bloom address_bloom; // filter of all generated addresses. 3x larger.
     int false_positive_count = 0;
 
     // check if the bloom filter exists
@@ -95,21 +97,36 @@ int main(int argc, char **argv) {
         // resize if we're at 80% of the expected entries or if this run will
         // top out the filter
         if (records >= priv_bloom.entries * 0.8 ||
-            records + count >= priv_bloom.entries) {
-            printf("\nResizing bloom filter!\n");
-            if (resize_private_bloom(&priv_bloom, db, count) == 1) {
+            records + generated >= priv_bloom.entries) {
+            printf("\nResizing bloom filters!\n");
+            size_t old_size = priv_bloom.entries; // likely unneeded.
+
+            if (resize_private_bloom(&priv_bloom, db, generated) == 1) {
                 exit(1);
             }
-            printf("Finished resizing bloom filter.\n");
+            // We need to resize the address filter too!
+            if (access("generated_address_filter.b", F_OK) != -1) {
+                bloom_load(&address_bloom, "generated_address_filter.b");
+            } else {
+                // this is kind of a hack, but it doesn't matter as we always
+                // overwrite the bloom filter anyways.
+                bloom_init2(&address_bloom, old_size, 0.01);
+            }
+            if (resize_address_bloom(&address_bloom, db, generated) == 1) {
+                exit(1);
+            }
+            printf("Finished resizing bloom filters.\n");
         }
 
         sqlite3_close(db);
 
     } else {
-        if (count > 1000) {
-            bloom_init2(&priv_bloom, count * 2, 0.01);
+        if (generated > 1000) {
+            bloom_init2(&priv_bloom, generated * 2, 0.01);
+            bloom_init2(&address_bloom, generated * 2 * 3, 0.01);
         } else {
             bloom_init2(&priv_bloom, 1000, 0.01);
+            bloom_init2(&address_bloom, 1000 * 3, 0.01);
         }
     }
 
@@ -181,6 +198,11 @@ int main(int argc, char **argv) {
                 printf("P2WPKH: %s\n", address_p2wpkh);
             #endif
 
+            // add the addresses to the address filter!
+            bloom_add(&address_bloom, set->p2pkh, strlen(set->p2pkh));
+            bloom_add(&address_bloom, set->p2sh_p2wpkh, strlen(set->p2sh_p2wpkh));
+            bloom_add(&address_bloom, set->p2wpkh, strlen(set->p2wpkh));
+
             if (exists == 0) {
                 #ifdef DEBUG
                     printf("New private key. Adding to update set.\n");
@@ -207,7 +229,10 @@ int main(int argc, char **argv) {
     remove(sorted);
 
     bloom_save(&priv_bloom, "private_key_filter.b");
+    bloom_save(&address_bloom, "generated_addresses_filter.b");
     bloom_free(&priv_bloom);
+    bloom_free(&address_bloom);
+
     printf("Bloom filter caught %d records.\n", false_positive_count);
 
     // create the sql queries
