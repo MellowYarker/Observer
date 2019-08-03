@@ -45,6 +45,7 @@ int main(int argc, char **argv) {
 
     const btc_chainparams* chain = &btc_chainparams_main; // mainnet
     const unsigned long count = strtol(argv[1], NULL, 10); // # of seeds to use
+    // "generated" is the number of keys we will generate. This is important!
     const unsigned long generated = count * PRIVATE_KEY_TYPES;
 
     // array of keys to add to DB, default size is 20% of generated priv keys
@@ -73,13 +74,26 @@ int main(int argc, char **argv) {
      *         the database. Therefore, we pass the private keys to the filter.
     **/
     struct bloom priv_bloom;
+    struct bloom address_bloom; // filter of all generated addresses. 3x larger.
+
+    const char private_filter_file[] = "private_key_filter.b";
+    const char address_filter_file[] = "generated_addresses_filter.b";
+
     int false_positive_count = 0;
 
     // check if the bloom filter exists
-    if (access("private_key_filter.b", F_OK) != -1) {
-        bloom_load(&priv_bloom, "private_key_filter.b");
+    if (access((char *) &private_filter_file, F_OK) != -1) {
+        if (bloom_load(&priv_bloom, (char *) &private_filter_file) == 0) {
+            printf("\nLoaded Private Key filter.\n");
+        }
 
-        // check if the bloom filter needs to be resized
+        if (access((char *) &address_filter_file, F_OK) != -1) {
+            if (bloom_load(&address_bloom, (char *) &address_filter_file) == 0) {
+                printf("Loaded Address filter.\n");
+            }
+        }
+
+        // check if the bloom filters need to be resized
         sqlite3 *db;
         int rc = sqlite3_open("../db/observer.db", &db);
         if (rc) {
@@ -95,21 +109,25 @@ int main(int argc, char **argv) {
         // resize if we're at 80% of the expected entries or if this run will
         // top out the filter
         if (records >= priv_bloom.entries * 0.8 ||
-            records + count >= priv_bloom.entries) {
-            printf("\nResizing bloom filter!\n");
-            if (resize_private_bloom(&priv_bloom, db, count) == 1) {
+            records + generated >= priv_bloom.entries) {
+            printf("\nResizing bloom filters!\n");
+
+            if (resize_bloom_filters(&priv_bloom, &address_bloom, db, generated)
+                == 1) {
                 exit(1);
             }
-            printf("Finished resizing bloom filter.\n");
+            printf("Finished resizing bloom filters.\n");
         }
 
         sqlite3_close(db);
 
     } else {
-        if (count > 1000) {
-            bloom_init2(&priv_bloom, count * 2, 0.01);
+        if (generated > 1000) {
+            bloom_init2(&priv_bloom, generated * 2, 0.01);
+            bloom_init2(&address_bloom, generated * 2 * 3, 0.01);
         } else {
             bloom_init2(&priv_bloom, 1000, 0.01);
+            bloom_init2(&address_bloom, 1000 * 3, 0.01);
         }
     }
 
@@ -120,7 +138,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    printf("Generating %d private keys per seed...\n", PRIVATE_KEY_TYPES);
+    printf("\nGenerating %d private keys per seed...\n", PRIVATE_KEY_TYPES);
     for (int i = 0; i < count; i++) {
         char seed[MAX_BUF];
         
@@ -181,6 +199,11 @@ int main(int argc, char **argv) {
                 printf("P2WPKH: %s\n", address_p2wpkh);
             #endif
 
+            // add the addresses to the address filter!
+            bloom_add(&address_bloom, set->p2pkh, strlen(set->p2pkh));
+            bloom_add(&address_bloom, set->p2sh_p2wpkh, strlen(set->p2sh_p2wpkh));
+            bloom_add(&address_bloom, set->p2wpkh, strlen(set->p2wpkh));
+
             if (exists == 0) {
                 #ifdef DEBUG
                     printf("New private key. Adding to update set.\n");
@@ -206,8 +229,11 @@ int main(int argc, char **argv) {
     fclose(fname);
     remove(sorted);
 
-    bloom_save(&priv_bloom, "private_key_filter.b");
+    bloom_save(&priv_bloom, (char *) &private_filter_file);
+    bloom_save(&address_bloom, (char *) &address_filter_file);
     bloom_free(&priv_bloom);
+    bloom_free(&address_bloom);
+
     printf("Bloom filter caught %d records.\n", false_positive_count);
 
     // create the sql queries
