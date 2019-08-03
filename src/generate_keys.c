@@ -75,13 +75,25 @@ int main(int argc, char **argv) {
     **/
     struct bloom priv_bloom;
     struct bloom address_bloom; // filter of all generated addresses. 3x larger.
+
+    const char private_filter_file[] = "private_key_filter.b";
+    const char address_filter_file[] = "generated_addresses_filter.b";
+
     int false_positive_count = 0;
 
     // check if the bloom filter exists
-    if (access("private_key_filter.b", F_OK) != -1) {
-        bloom_load(&priv_bloom, "private_key_filter.b");
+    if (access((char *) &private_filter_file, F_OK) != -1) {
+        if (bloom_load(&priv_bloom, (char *) &private_filter_file) == 0) {
+            printf("\nLoaded Private Key filter.\n");
+        }
 
-        // check if the bloom filter needs to be resized
+        if (access((char *) &address_filter_file, F_OK) != -1) {
+            if (bloom_load(&address_bloom, (char *) &address_filter_file) == 0) {
+                printf("Loaded Address filter.\n");
+            }
+        }
+
+        // check if the bloom filters need to be resized
         sqlite3 *db;
         int rc = sqlite3_open("../db/observer.db", &db);
         if (rc) {
@@ -99,20 +111,9 @@ int main(int argc, char **argv) {
         if (records >= priv_bloom.entries * 0.8 ||
             records + generated >= priv_bloom.entries) {
             printf("\nResizing bloom filters!\n");
-            size_t old_size = priv_bloom.entries; // likely unneeded.
 
-            if (resize_private_bloom(&priv_bloom, db, generated) == 1) {
-                exit(1);
-            }
-            // We need to resize the address filter too!
-            if (access("generated_address_filter.b", F_OK) != -1) {
-                bloom_load(&address_bloom, "generated_address_filter.b");
-            } else {
-                // this is kind of a hack, but it doesn't matter as we always
-                // overwrite the bloom filter anyways.
-                bloom_init2(&address_bloom, old_size, 0.01);
-            }
-            if (resize_address_bloom(&address_bloom, db, generated) == 1) {
+            if (resize_bloom_filters(&priv_bloom, &address_bloom, db, generated)
+                == 1) {
                 exit(1);
             }
             printf("Finished resizing bloom filters.\n");
@@ -137,7 +138,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    printf("Generating %d private keys per seed...\n", PRIVATE_KEY_TYPES);
+    printf("\nGenerating %d private keys per seed...\n", PRIVATE_KEY_TYPES);
     for (int i = 0; i < count; i++) {
         char seed[MAX_BUF];
         
@@ -228,8 +229,8 @@ int main(int argc, char **argv) {
     fclose(fname);
     remove(sorted);
 
-    bloom_save(&priv_bloom, "private_key_filter.b");
-    bloom_save(&address_bloom, "generated_addresses_filter.b");
+    bloom_save(&priv_bloom, (char *) &private_filter_file);
+    bloom_save(&address_bloom, (char *) &address_filter_file);
     bloom_free(&priv_bloom);
     bloom_free(&address_bloom);
 
