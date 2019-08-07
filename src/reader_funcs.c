@@ -38,10 +38,22 @@ void add_to_head(struct node *Node, struct node *head) {
     }
 }
 
+int add_private(struct node *Node, char *private) {
+    Node->private = malloc(strlen(private) * sizeof(char) + 1);
+    if (Node->private == NULL) {
+        perror("malloc");
+        return 1;
+    }
+    strcpy(Node->private, private);
+    return 0;
+}
 
 int callback(void *arr, int argc, char **argv, char **columns) {
-    // struct key_set *keys = malloc(sizeof(struct key_set));
-    // fill_key_set(keys, argv[0], argv[1], argv[2], argv[3], argv[4]);
-    // push_Array(arr, keys);
+    if (strlen(argv[1]) > 0) {
+        struct node *record = create_node(argv[0]);
+        add_private(record, argv[0]);
+        add_to_head(record, arr);
+    }
+
     return 0;
 }
