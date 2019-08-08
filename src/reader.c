@@ -13,18 +13,14 @@
 
 #include "reader.h"
 
-
-#define p2pkh 0
-#define p2sh 1
-#define p2wpkh 2
-
 int main() {
     btc_ecc_start(); // load libbtc
-    const btc_chainparams* chain = &btc_chainparams_main; // mainnet
+    // const btc_chainparams* chain = &btc_chainparams_main; // mainnet
     
     struct bloom address_bloom; // filter of all generated addresses.
     const char address_filter_file[] = "generated_addresses_filter.b";
     
+    // load the bloom filter
     if (access((char *) &address_filter_file, F_OK) != -1) {
         if (bloom_load(&address_bloom, (char *) &address_filter_file) == 0) {
             printf("Loaded Address filter.\n");
@@ -34,9 +30,23 @@ int main() {
     } else {
         printf("Could not find filter: %s\n", address_filter_file);
     }
-    // set up the pipe, data flows from parent to child only.
+
+    // set up the pipe, data flows from parent to child.
     int fd[2];
     pipe(fd);
+
+    // TODO: we need to see the size of a transaction to create a large
+    // enough buffer for all instances
+    char *transaction; // transaction string. txs are stored here after reading
+    int bufsize = 1000; // max buffer size of a transaction. Right pad with '/0'
+
+    // same memory space in parent and child, but not shared between them
+    transaction = malloc(sizeof(char) * bufsize);
+
+    if (transaction == NULL) {
+        perror("malloc");
+        exit(1);
+    }
 
     int r = fork();
     if (r < 0) {
@@ -44,14 +54,11 @@ int main() {
         exit(1);
     } else if (r == 0) {
 
-        // child process
+        /*  Child process reads transactions from the pipe, and checks if their
+            positive outputs are in our database.
 
-        /*  The purpose of this process is to take a transaction from the
-            pipe and check if it's outputs are in our database.
-
-            The parent process only writes to the child if an output came back
-            positive from the address bloom filter, so we only check
-            addresses that may actually be present.
+            A positive output is an addresses that came back as "positive" from
+            the bloom filter. I.e, it might be in our database.
         */
 
         // close the write end of the pipe
@@ -70,27 +77,11 @@ int main() {
             exit(1);
         }
 
-        // Step 3: begin (blocking) loop of reading from the pipe
-        //           - in this loop we check the database!
-
-        // TODO: we need to see the size of a transaction to create a large
-        // enough buffer for all instances
-
-        int bufsize = 1000; // should be same in parent, TODO: set this before fork
-        char *transaction = malloc(sizeof(char) * bufsize);
-
-        if (transaction == NULL) {
-            perror("malloc");
-            exit(1);
-        }
-
         char **outputs; // array of pointers to output addresses
         int ntxOut = 0; // the number of output addresses
         int txResponse;
-        // TODO: error check every read call
-        // Doing this many reads is a little dangerous, there's a lot of
-        // blocking behaviour, but then again we need all the data too come through
 
+        // begin (blocking) loop of reading from the pipe
         while ((txResponse = read(fd[0], transaction, bufsize)) != 0) {
             if (txResponse == -1) {
                 perror("read");
@@ -208,7 +199,6 @@ int main() {
             }
 
             free(outputs);
-            free(transaction);
         }
         // parent process closed the pipe, begin shutdown
         sqlite3_close(db);
@@ -216,6 +206,7 @@ int main() {
             perror("close");
             exit(1);
         }
+        free(transaction);
 
         exit(0); // process terminated normally
     } else {
@@ -240,94 +231,103 @@ int main() {
 
         // Step 3: begin (blocking) loop of reading from socket
 
-        // infinite loop goes here
-        // read from socket, parse for outputs
+        // Read from socket in loop, gather outputs from JSON
+        while (1) { // 1 will change to be "while we get a valid response"
+            size_t sizeout = 128;
+            char output_address[sizeout]; // temporary address buffer
+            strncpy(output_address, "1ExampLe_Address", 34); // delete this
 
-        size_t sizeout = 128;
-        char output_address[sizeout]; // temporary address buffer
-        strncpy(output_address, "1ExampLe_Address", 34);
+            // linked list of addresses that came back as "positive" from BF
+            struct node *positive_address_head = NULL;
+            int list_size = 0;
 
-        // linked list of addresses that came back as "positive" from BF
-        // we will write these to the child for further investigation
+            // TODO: here we loop over the Tx outputs
+            //      -> Store each output in output_address as we get to it
+            int outputCount = 0; // temporary until we get the actual tx
+            for (int i = 0; i < outputCount; i++) {
+                // parse the tx for each output this (using jansson)
+                // strcpy(output_address, transacation[index we want]);
 
-        // note, nodes are free'd after they're written to the child
-        struct node *positive_address_head = NULL;
-        int list_size = 0;
-
-        // TODO: here we loop over the Tx outputs
-        //      -> Store each output in output_address as we get to it
-
-        // check if we own the output address
-        if (bloom_check(&address_bloom, &output_address, strlen(output_address))
-            == 1) {
-            struct node *cur = create_node(output_address);
-            add_to_head(cur, positive_address_head); // add the node to the head
-            list_size++; // increment number of elements in the linked list
-        }
-        // end of the loop
-
-        // after checking all outputs in this transaction..
-        if (positive_address_head != NULL) {
-            /** Data is written to child like so
-             * 1. Transaction: x byte buffer
-             * 2. # of output addresses that will be sent: sizeof(int)
-             * 3. # of bytes of incoming address: sizeof(int)
-             * 4. Address (null terminated): size described in previous msg
-            **/
-
-            // TODO: Note, we don't actually have access to transactions yet.
-            // We will eventually just make a large buffer that we can write to
-            // that can fit all transactions.
-            // *************************************************
-            char *transaction;
-            // step 1
-            if (write(fd[1], transaction, strlen(transaction)) == -1) {
-                perror("write");
-                fprintf(stderr, "Failed to write to child.");
-                exit(1);
-            }
-            // *************************************************
-            // step 2
-            if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
-                perror("write");
-                fprintf(stderr, "Failed to write to child.");
-                exit(1);
+                // check if we own the output address
+                if (bloom_check(&address_bloom, &output_address,
+                                strlen(output_address)) == 1) {
+                    // store positive addresses in linked liist
+                    struct node *cur = create_node(output_address);
+                    add_to_head(cur, positive_address_head);
+                    list_size++; // increment number of elements in the LL
+                }
             }
 
-            struct node *cur = positive_address_head;
-            // write all the positive addresses to the pipe
-            while (cur->next != NULL) {
-                // step 3
-                if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
+            if (positive_address_head != NULL) {
+                /** Data is written to child like so
+                 * 1. Transaction: x byte buffer
+                 * 2. # of output addresses that will be sent: sizeof(int)
+                 * 3. # of bytes of incoming address: sizeof(int)
+                 * 4. Address (null terminated): size described in previous msg
+                **/
+
+                // TODO: Note, we don't actually have access to transactions yet
+                // We will eventually just make a large buffer that we can write
+                // to that can fit all transactions.
+                // *************************************************
+
+                // step 1
+                if (write(fd[1], transaction, bufsize) == -1) {
                     perror("write");
                     fprintf(stderr, "Failed to write to child.");
                     exit(1);
                 }
-                // step 4
-                if (write(fd[1], cur->data, cur->size) == -1) {
+                // *************************************************
+                // step 2
+                if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
                     perror("write");
                     fprintf(stderr, "Failed to write to child.");
                     exit(1);
                 }
 
-                // free the current node
-                free(cur->data);
-                struct node *temp = cur;
-                cur = cur->next;
-                free(temp);
+                struct node *cur = positive_address_head;
+                // write all the positive addresses to the pipe
+                while (cur->next != NULL) {
+                    // step 3
+                    if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
+                        perror("write");
+                        fprintf(stderr, "Failed to write to child.");
+                        exit(1);
+                    }
+                    // step 4
+                    if (write(fd[1], cur->data, cur->size) == -1) {
+                        perror("write");
+                        fprintf(stderr, "Failed to write to child.");
+                        exit(1);
+                    }
 
-                list_size--;
-            }
-            if (list_size != 0) {
-                printf("ERROR: we failed to write all elements to the pipe.\n");
-            } else {
-                printf("Successfully wrote positive addresses to the pipe.\n");
+                    // free the current node
+                    free(cur->data);
+                    struct node *temp = cur;
+                    cur = cur->next;
+                    free(temp);
+
+                    list_size--;
+                }
+
+                // TODO: delete this, it's for debugging
+                if (list_size != 0) {
+                    printf("ERROR failed to write all elements to the pipe.\n");
+                } else {
+                    printf("Successfully wrote positive addresses to pipe.\n");
+                }
             }
         }
+        // Close the pipe to shutdown the child process.
+        if (close(fd[1]) == -1) {
+            perror("close");
+            exit(1);
+        }
+        free(transaction);
     }
-    // otherwise keep going
     
     // end of loop via signal?
+
     bloom_free(&address_bloom);
     btc_ecc_stop();
 
