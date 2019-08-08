@@ -76,7 +76,7 @@ int main() {
         // TODO: we need to see the size of a transaction to create a large
         // enough buffer for all instances
 
-        int bufsize = 1000; // assume tx = 1kB
+        int bufsize = 1000; // should be same in parent, TODO: set this before fork
         char *transaction = malloc(sizeof(char) * bufsize);
 
         if (transaction == NULL) {
@@ -85,23 +85,44 @@ int main() {
         }
 
         char **outputs; // array of pointers to output addresses
+        int ntxOut = 0; // the number of output addresses
+
+        // TODO: error check every read call
+        // Doing this many reads is a little dangerous, there's a lot of
+        // blocking behaviour, but then again we need all the data too come through
 
         while (read(fd[0], transaction, bufsize) != -1) {
-            char **outputs; // array of pointers to output addresses
-            int ntxOut = 0; // the number of output addresses
-            // TODO: set ntxOut after parsing JSON response
+            read(fd[0], &ntxOut, sizeof(ntxOut)); // set # of incoming addrs
             outputs = malloc(sizeof(char *) * ntxOut);
 
             if (outputs == NULL) {
                 perror("malloc");
                 exit(1);
             }
+            int addr_size; // # of bytes of incoming address
+            int total_addr_size_sum = 0; // sum of length of addresses read
+            // read each output address into the outputs array
+            for (int j = 0; j < ntxOut; j++) {
+                read(fd[0], &addr_size, sizeof(addr_size));
+                total_addr_size_sum = total_addr_size_sum + addr_size - 1;
+                outputs[j] = malloc(addr_size * sizeof(char)); // allocate space for the incoming address
+
+                if (outputs[j] == NULL) {
+                    perror("malloc");
+                    exit(1);
+                }
+
+                read(fd[0], outputs[j], addr_size); // store the address directly in the array
+            }
 
             char *batch; // all the queries combined in a string
             char *query; // a single query
-            char query_size = ntxOut * 48 + (40 * ntxOut); // estimating size
+            // Note, 51 is the size of "format" with q's replaced with P2WPKH
+            // and the final %q being empty. This should allocate more than
+            // enough for the final query.
+            int query_buf_size = ntxOut * 51 + total_addr_size_sum;
             int address_type;
-            char format[] = "SELECT %q FROM keys WHERE %q='%q'";
+            char format[] = "SELECT privkey, %q FROM keys WHERE %q='%q'; ";
 
             // Check every output against our database
             for (int i = 0; i < ntxOut; i++) {
@@ -136,22 +157,40 @@ int main() {
                     fprintf(stderr, "Failed to build query.");
                     exit(1);
                 }
-                // TODO: here we check if we need to reallocate 'batch'
-                // then we append query to batch
+                // append the query to batch
+                strcat(batch, query);
                 sqlite3_free(query);
             }
 
-            // Maybe we can use the linked list from /init_download for response
-            // TODO: write any returned records to the linked list
-            rc = sqlite3_exec(db, batch, callback, 0, &zErrMsg);
+            // write any returned records to the linked list
+            struct node *exists = NULL;
+
+            rc = sqlite3_exec(db, batch, callback, exists, &zErrMsg);
             if (rc != SQLITE_OK) {
                 fprintf(stderr, "SQL error: %s\n", zErrMsg);
                 sqlite3_free(zErrMsg);
             }
 
-
             free(batch);
 
+            // TODO: at this point, we need to handle any records that are
+            // returned from the database
+            if (exists != NULL) {
+                // this transaction contains output addresses that we control
+                // TODO: we can create a new transaction that spends them.
+                printf("We have found a spendable output!\n");
+            }
+
+            // after handling all records, clean up and get ready to read the
+            // next transaction!
+
+            // free all the addresses we saved
+            for (int j = 0; j < ntxOut; j++) {
+                free(outputs[j]);
+            }
+
+            free(outputs);
+            free(transaction);
         }
         // parent process closed the pipe, begin shutdown
         sqlite3_close(db);
@@ -177,24 +216,28 @@ int main() {
             exit(1);
         }
 
-        // Step 2: Set up WebSocket connection with blockchain (LATER PROBLEM)
+        // Step 2: Set up WebSocket connection with blockchain
 
+        // This will be completed later
 
         // Step 3: begin (blocking) loop of reading from socket
-        //          - in this loop, we check the bloom filter!
+
         // infinite loop goes here
         // read from socket, parse for outputs
 
         size_t sizeout = 128;
-        char output_address[sizeout];
+        char output_address[sizeout]; // temporary address buffer
         strncpy(output_address, "1ExampLe_Address", 34);
 
-        // this linked list consists of addresses we must check, nodes are
-        // "free'd" as they're written to the child process
+        // linked list of addresses that came back as "positive" from BF
+        // we will write these to the child for further investigation
+
+        // note, nodes are free'd after they're written to the child
         struct node *positive_address_head = NULL;
         int list_size = 0;
 
         // TODO: here we loop over the Tx outputs
+        //      -> Store each output in output_address as we get to it
 
         // check if we own the output address
         if (bloom_check(&address_bloom, &output_address, strlen(output_address))
@@ -203,32 +246,44 @@ int main() {
             add_to_head(cur, positive_address_head); // add the node to the head
             list_size++; // increment number of elements in the linked list
         }
+        // end of the loop
 
         // after checking all outputs in this transaction..
         if (positive_address_head != NULL) {
-            // we write the transaction, then the number of addresses in the LL,
-            // then the size of the incoming address, then the address itself
+            /** Data is written to child like so
+             * 1. Transaction: x byte buffer
+             * 2. # of output addresses that will be sent: sizeof(int)
+             * 3. # of bytes of incoming address: sizeof(int)
+             * 4. Address (null terminated): size described in previous msg
+            **/
 
             // Note, we don't actually have access to transactions yet.
             // We will eventually just make a large buffer that we can write to
             // that can fit all transactions.
             // *************************************************
-            write(fd[1], transaction, strlen(transaction)); // write transaction
+            char *transaction;
+            write(fd[1], transaction, strlen(transaction)); // 1
             // *************************************************
-            write(fd[1], &list_size, sizeof(list_size)); // write number of addrs
+            write(fd[1], &list_size, sizeof(list_size)); // 2
 
             struct node *cur = positive_address_head;
-            // write all the addresses we must check to the pipe!
+            // write all the positive addresses to the pipe
             while (cur->next != NULL) {
-                write(fd[1], &cur->size, sizeof(cur->size)); // # bytes in cur::data
-                write(fd[1], cur->data, cur->size); // the data itself
+                write(fd[1], &cur->size, sizeof(cur->size)); // 3
+                write(fd[1], cur->data, cur->size); // 4
 
                 // free the current node
                 free(cur->data);
                 struct node *temp = cur;
                 cur = cur->next;
                 free(temp);
-                list_size--; // will eventually be 0
+
+                list_size--;
+            }
+            if (list_size != 0) {
+                printf("ERROR: we failed to write all elements to the pipe.\n");
+            } else {
+                printf("Successfully wrote positive addresses to the pipe.\n");
             }
         }
     }
