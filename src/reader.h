@@ -16,8 +16,10 @@ struct node* create_node(char *data);
 /* Update the linked list such that Node is the new head. */
 void add_to_head(struct node *Node, struct node *head);
 
-/* Add a private key to this node if the address is spendable. */
+/*  Add a private key to this node if the address is spendable.
+    Returns 0 on success, 1 on failure.
+*/
 int add_private(struct node *Node, char *private);
 
-/* TODO: Puts all the resulting addresses in a list  */
+/* Store all addresses that are returned from the database into a linked list.*/
 int callback(void *arr, int argc, char **argv, char **columns);
