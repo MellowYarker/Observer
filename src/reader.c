@@ -86,13 +86,21 @@ int main() {
 
         char **outputs; // array of pointers to output addresses
         int ntxOut = 0; // the number of output addresses
-
+        int txResponse;
         // TODO: error check every read call
         // Doing this many reads is a little dangerous, there's a lot of
         // blocking behaviour, but then again we need all the data too come through
 
-        while (read(fd[0], transaction, bufsize) != -1) {
-            read(fd[0], &ntxOut, sizeof(ntxOut)); // set # of incoming addrs
+        while ((txResponse = read(fd[0], transaction, bufsize)) != 0) {
+            if (txResponse == -1) {
+                perror("read");
+                exit(1);
+            }
+            // set # of incoming addrs
+            if (read(fd[0], &ntxOut, sizeof(ntxOut)) == -1) {
+                perror("read");
+                exit(1);
+            }
             outputs = malloc(sizeof(char *) * ntxOut);
 
             if (outputs == NULL) {
@@ -101,18 +109,28 @@ int main() {
             }
             int addr_size; // # of bytes of incoming address
             int total_addr_size_sum = 0; // sum of length of addresses read
+
             // read each output address into the outputs array
             for (int j = 0; j < ntxOut; j++) {
-                read(fd[0], &addr_size, sizeof(addr_size));
+                if (read(fd[0], &addr_size, sizeof(addr_size)) == -1) {
+                    perror("read");
+                    exit(1);
+                }
+
                 total_addr_size_sum = total_addr_size_sum + addr_size - 1;
-                outputs[j] = malloc(addr_size * sizeof(char)); // allocate space for the incoming address
+                // allocate space for the incoming address
+                outputs[j] = malloc(addr_size * sizeof(char));
 
                 if (outputs[j] == NULL) {
                     perror("malloc");
                     exit(1);
                 }
 
-                read(fd[0], outputs[j], addr_size); // store the address directly in the array
+                // store the address directly in the array
+                if (read(fd[0], outputs[j], addr_size) == -1) {
+                    perror("read");
+                    exit(1);
+                }
             }
 
             char *batch; // all the queries combined in a string
@@ -257,20 +275,40 @@ int main() {
              * 4. Address (null terminated): size described in previous msg
             **/
 
-            // Note, we don't actually have access to transactions yet.
+            // TODO: Note, we don't actually have access to transactions yet.
             // We will eventually just make a large buffer that we can write to
             // that can fit all transactions.
             // *************************************************
             char *transaction;
-            write(fd[1], transaction, strlen(transaction)); // 1
+            // step 1
+            if (write(fd[1], transaction, strlen(transaction)) == -1) {
+                perror("write");
+                fprintf(stderr, "Failed to write to child.");
+                exit(1);
+            }
             // *************************************************
-            write(fd[1], &list_size, sizeof(list_size)); // 2
+            // step 2
+            if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
+                perror("write");
+                fprintf(stderr, "Failed to write to child.");
+                exit(1);
+            }
 
             struct node *cur = positive_address_head;
             // write all the positive addresses to the pipe
             while (cur->next != NULL) {
-                write(fd[1], &cur->size, sizeof(cur->size)); // 3
-                write(fd[1], cur->data, cur->size); // 4
+                // step 3
+                if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
+                    perror("write");
+                    fprintf(stderr, "Failed to write to child.");
+                    exit(1);
+                }
+                // step 4
+                if (write(fd[1], cur->data, cur->size) == -1) {
+                    perror("write");
+                    fprintf(stderr, "Failed to write to child.");
+                    exit(1);
+                }
 
                 // free the current node
                 free(cur->data);
