@@ -258,6 +258,10 @@ int main() {
                                 strlen(output_address)) == 1) {
                     // store positive addresses in linked liist
                     struct node *positive = create_node(output_address);
+                    if (positive == NULL) {
+                        fprintf(stderr, "Couldn't allocate space for Node.");
+                        exit(1);
+                    }
                     add_to_head(positive, positive_address_head);
                     list_size++; // increment number of elements in the LL
                 }

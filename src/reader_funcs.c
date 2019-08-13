@@ -53,7 +53,14 @@ int callback(void *arr, int argc, char **argv, char **columns) {
     // arg 1 = address
     if (strlen(argv[1]) > 0) {
         struct node *record = create_node(argv[1]);
-        add_private(record, argv[0]);
+        if (record == NULL) {
+            fprintf(stderr, "Couldn't allocate space for returned record.");
+            return 1;
+        }
+        if (add_private(record, argv[0]) == 1) {
+            fprintf(stderr, "Couldn't allocate space for private key.");
+            return 1;
+        }
         add_to_head(record, arr);
     }
 
