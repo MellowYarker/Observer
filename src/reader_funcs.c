@@ -49,8 +49,10 @@ int add_private(struct node *Node, char *private) {
 }
 
 int callback(void *arr, int argc, char **argv, char **columns) {
+    // arg 0 = private key
+    // arg 1 = address
     if (strlen(argv[1]) > 0) {
-        struct node *record = create_node(argv[0]);
+        struct node *record = create_node(argv[1]);
         add_private(record, argv[0]);
         add_to_head(record, arr);
     }

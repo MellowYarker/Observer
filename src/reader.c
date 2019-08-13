@@ -29,7 +29,7 @@ int main() {
         }
     } else {
         printf("Could not find filter: %s\n", address_filter_file);
-        printf("This is probably because you haven't generated any addresses.\n");
+        printf("You have not generated any addresses.\n");
         exit(1);
     }
 
