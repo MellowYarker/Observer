@@ -45,6 +45,7 @@ int main() {
 
     // same memory space in parent and child, but not shared between them
     transaction = malloc(sizeof(char) * bufsize);
+    memset(transaction, '\0', bufsize);
 
     if (transaction == NULL) {
         perror("malloc");
@@ -176,8 +177,6 @@ int main() {
 
             free(batch);
 
-            // TODO: at this point, we need to handle any records that are
-            // returned from the database
             if (exists != NULL) {
                 // this transaction contains output addresses that we control
                 // TODO: we can create a new transaction that spends them.
@@ -244,24 +243,6 @@ int main() {
             size_t sizeout = 128;
             char output_address[sizeout]; // temporary address buffer
 
-            // delete from here **
-            // an array of pointers to addresses. Some of which are in our db
-            char **test_list = malloc(4 * sizeof(char *));
-
-            // test values
-            test_list[0] = malloc((strlen("13sTVUMCUyNjz2b2cfgrBcXj6FMjMA5CNE")
-                                   + 1) * sizeof(char)); // privkey maddie05000000000000000000000000 - p2pkh
-            strcpy(test_list[0], "13sTVUMCUyNjz2b2cfgrBcXj6FMjMA5CNE");
-            test_list[1] = malloc((strlen("bc1qmz2ghff8xhd5f34cl46pa38uafmwn2tsuppur4")
-                                   + 1) * sizeof(char)); // privkey 000000000000000000000000#1stunna - p2sh
-            strcpy(test_list[1], "bc1qmz2ghff8xhd5f34cl46pa38uafmwn2tsuppur4");
-            test_list[2] = malloc((strlen("3LSczTmoYNYAi5LeeKR88JKGEREnLdDDjn")
-                                   + 1) * sizeof(char)); // privkey 707a2cdf7931c60188ab936c7fa29df7 - p2wpkh
-            strcpy(test_list[2], "3LSczTmoYNYAi5LeeKR88JKGEREnLdDDjn");
-            test_list[3] = malloc((strlen("1MbccsqwFwkc7RLfkqXKxMLUGj9tyq9GT9")
-                                   + 1) * sizeof(char)); // Not in database
-            strcpy(test_list[3], "1MbccsqwFwkc7RLfkqXKxMLUGj9tyq9GT9");
-            // ** to here
             // linked list of addresses that came back as "positive" from BF
             struct node *positive_address_head = NULL;
             int list_size = 0;
@@ -272,10 +253,6 @@ int main() {
             for (int i = 0; i < outputCount; i++) {
                 // parse the tx for each output (using jansson)
                 // strcpy(output_address, transacation[index we want]);
-                // delete from here **
-                strncpy(output_address, test_list[i], sizeout);
-                free(test_list[i]);
-                // ** to here
 
                 // check if we own the output address
                 if (bloom_check(&address_bloom, &output_address,
@@ -290,7 +267,6 @@ int main() {
                     list_size++; // increment number of elements in the LL
                 }
             }
-            free(test_list); // delete
 
             if (positive_address_head != NULL) {
                 /** Data is written to child like so
@@ -305,20 +281,18 @@ int main() {
                 // to that can fit all transactions.
                 // *************************************************
 
-                memset(transaction, '\0', bufsize); // delete
-                strcpy(transaction, "No data"); // delete
-                // right pad transaction with null terminators // delete
                 // step 1
                 if (write(fd[1], transaction, bufsize) == -1) {
                     perror("write");
-                    fprintf(stderr, "Failed to write transaction to child.");
+                    fprintf(stderr, "Failed to write transaction to the pipe.");
                     exit(1);
                 }
                 // *************************************************
                 // step 2
                 if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
                     perror("write");
-                    fprintf(stderr, "Failed to write quantity of addresses.");
+                    fprintf(stderr, "Failed to write the number of addresses"\
+                                    " to the pipe.");
                     exit(1);
                 }
 
@@ -328,13 +302,15 @@ int main() {
                     // step 3
                     if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
                         perror("write");
-                        fprintf(stderr, "Failed to write address size to child.");
+                        fprintf(stderr, "Failed to write the address length to"\
+                                        " the pipe.");
                         exit(1);
                     }
                     // step 4
                     if (write(fd[1], cur->data, cur->size) == -1) {
                         perror("write");
-                        fprintf(stderr, "Failed to write address to child.");
+                        fprintf(stderr, "Failed to write the address to the"\
+                                        " pipe.");
                         exit(1);
                     }
 
@@ -348,7 +324,6 @@ int main() {
                 }
             }
             memset(transaction, '\0', bufsize);
-            loop = 0; // delete
         }
         // We also want to get here if user sends a signal
         // Close the pipe to shutdown the child process.
