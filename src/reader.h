@@ -1,7 +1,3 @@
-#define p2pkh 0
-#define p2sh 1
-#define p2wpkh 2
-
 /* A node in a linked list. Free'd when written to child process. */
 struct node {
     char *data; // pointer to data
