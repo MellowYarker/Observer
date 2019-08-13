@@ -23,9 +23,10 @@ int main() {
     // load the bloom filter
     if (access((char *) &address_filter_file, F_OK) != -1) {
         if (bloom_load(&address_bloom, (char *) &address_filter_file) == 0) {
-            printf("Loaded Address filter.\n");
+            printf("Loaded address filter.\n");
         } else {
             printf("Failed to load bloom filter.\n");
+            exit(1);
         }
     } else {
         printf("Could not find filter: %s\n", address_filter_file);
@@ -167,7 +168,7 @@ int main() {
             // write any returned records to this linked list
             struct node *exists = NULL;
 
-            rc = sqlite3_exec(db, batch, callback, exists, &zErrMsg);
+            rc = sqlite3_exec(db, batch, callback, &exists, &zErrMsg);
             if (rc != SQLITE_OK) {
                 fprintf(stderr, "SQL error: %s\n", zErrMsg);
                 sqlite3_free(zErrMsg);
@@ -180,10 +181,11 @@ int main() {
             if (exists != NULL) {
                 // this transaction contains output addresses that we control
                 // TODO: we can create a new transaction that spends them.
-                printf("We have found a spendable output!\n");
                 struct node *cur = exists;
                 while (cur != NULL) {
-                    printf("Address: %s\nKey: %s\n", cur->data, cur->private);
+                    printf("\nSpendable output discovered!\n");
+                    printf("Address: %s\nPrivate Key: %s\n", cur->data,
+                            cur->private);
                     // TODO: do something
                     free(cur->data);
                     free(cur->private);
@@ -237,35 +239,58 @@ int main() {
         // Step 3: begin (blocking) loop of reading from socket
 
         // Read from socket in loop, gather outputs from JSON
-        while (1) { // 1 will change to be "while we get a valid response"
+        int loop = 1;
+        while (loop) { // loop will change to be "while we get a valid response"
             size_t sizeout = 128;
             char output_address[sizeout]; // temporary address buffer
-            strncpy(output_address, "1ExampLe_Address", 34); // delete this
 
+            // delete from here **
+            // an array of pointers to addresses. Some of which are in our db
+            char **test_list = malloc(4 * sizeof(char *));
+
+            // test values
+            test_list[0] = malloc((strlen("13sTVUMCUyNjz2b2cfgrBcXj6FMjMA5CNE")
+                                   + 1) * sizeof(char)); // privkey maddie05000000000000000000000000 - p2pkh
+            strcpy(test_list[0], "13sTVUMCUyNjz2b2cfgrBcXj6FMjMA5CNE");
+            test_list[1] = malloc((strlen("bc1qmz2ghff8xhd5f34cl46pa38uafmwn2tsuppur4")
+                                   + 1) * sizeof(char)); // privkey 000000000000000000000000#1stunna - p2sh
+            strcpy(test_list[1], "bc1qmz2ghff8xhd5f34cl46pa38uafmwn2tsuppur4");
+            test_list[2] = malloc((strlen("3LSczTmoYNYAi5LeeKR88JKGEREnLdDDjn")
+                                   + 1) * sizeof(char)); // privkey 707a2cdf7931c60188ab936c7fa29df7 - p2wpkh
+            strcpy(test_list[2], "3LSczTmoYNYAi5LeeKR88JKGEREnLdDDjn");
+            test_list[3] = malloc((strlen("1MbccsqwFwkc7RLfkqXKxMLUGj9tyq9GT9")
+                                   + 1) * sizeof(char)); // Not in database
+            strcpy(test_list[3], "1MbccsqwFwkc7RLfkqXKxMLUGj9tyq9GT9");
+            // ** to here
             // linked list of addresses that came back as "positive" from BF
             struct node *positive_address_head = NULL;
             int list_size = 0;
 
             // TODO: here we loop over the Tx outputs
             //      -> Store each output in output_address as we get to it
-            int outputCount = 0; // temporary until we get the actual tx
+            int outputCount = 4; // temporary until we get the actual tx
             for (int i = 0; i < outputCount; i++) {
                 // parse the tx for each output (using jansson)
                 // strcpy(output_address, transacation[index we want]);
+                // delete from here **
+                strncpy(output_address, test_list[i], sizeout);
+                free(test_list[i]);
+                // ** to here
 
                 // check if we own the output address
                 if (bloom_check(&address_bloom, &output_address,
                                 strlen(output_address)) == 1) {
-                    // store positive addresses in linked liist
+                    // store positive addresses in linked list
                     struct node *positive = create_node(output_address);
                     if (positive == NULL) {
                         fprintf(stderr, "Couldn't allocate space for Node.");
                         exit(1);
                     }
-                    add_to_head(positive, positive_address_head);
+                    add_to_head(positive, &positive_address_head);
                     list_size++; // increment number of elements in the LL
                 }
             }
+            free(test_list); // delete
 
             if (positive_address_head != NULL) {
                 /** Data is written to child like so
@@ -280,6 +305,9 @@ int main() {
                 // to that can fit all transactions.
                 // *************************************************
 
+                memset(transaction, '\0', bufsize); // delete
+                strcpy(transaction, "No data"); // delete
+                // right pad transaction with null terminators // delete
                 // step 1
                 if (write(fd[1], transaction, bufsize) == -1) {
                     perror("write");
@@ -296,7 +324,7 @@ int main() {
 
                 struct node *cur = positive_address_head;
                 // write all the positive addresses to the pipe
-                while (cur->next != NULL) {
+                while (cur != NULL) {
                     // step 3
                     if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
                         perror("write");
@@ -318,15 +346,9 @@ int main() {
 
                     list_size--;
                 }
-
-                // TODO: delete this once we know the system works
-                if (list_size != 0) {
-                    printf("ERROR failed to write all elements to the pipe.\n");
-                } else {
-                    printf("Successfully wrote positive addresses to pipe.\n");
-                }
             }
             memset(transaction, '\0', bufsize);
+            loop = 0; // delete
         }
         // We also want to get here if user sends a signal
         // Close the pipe to shutdown the child process.
@@ -335,6 +357,7 @@ int main() {
             exit(1);
         }
         free(transaction);
+        wait(NULL);
     }
     
     // end of loop via signal?
