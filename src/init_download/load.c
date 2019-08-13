@@ -22,13 +22,14 @@ struct node* create_node(char *data) {
         perror("malloc");
         return NULL;
     }
-    // fill with data
-    Node->data = malloc(strlen(data) * sizeof(char));
+    Node->data = malloc(strlen(data) * sizeof(char) + 1);
 
     if (Node->data == NULL) {
         perror("malloc");
         return NULL;
     }
+    // fill with data
+    strncpy(Node->data, data, strlen(data));
     Node->next = NULL;
 
     return Node;

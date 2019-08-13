@@ -11,7 +11,7 @@ gen_keys: generate_keys.o key_funcs.o
 	$^ ${libs}
 
 # collect and parse mempool transcations
-reader: reader.o
+reader: reader.o reader_funcs.c
 	${libbtc}/libtool --silent --tag=CC --mode=link gcc ${flags} -static -o $@ \
 	$^ ${libs}
 
