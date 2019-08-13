@@ -29,6 +29,8 @@ int main() {
         }
     } else {
         printf("Could not find filter: %s\n", address_filter_file);
+        printf("This is probably because you haven't generated any addresses.\n");
+        exit(1);
     }
 
     // set up the pipe, data flows from parent to child.
@@ -107,7 +109,7 @@ int main() {
                     perror("read");
                     exit(1);
                 }
-
+                // increment but don't count null terminator
                 total_addr_size_sum = total_addr_size_sum + addr_size - 1;
                 // allocate space for the incoming address
                 outputs[j] = malloc(addr_size * sizeof(char));
@@ -125,41 +127,32 @@ int main() {
             }
 
             char *batch; // all the queries combined in a string
-            char *query; // a single query
-            // Note, 51 is the size of "format" with q's replaced with P2WPKH
-            // and the final %q being empty. This should allocate more than
-            // enough for the final query.
-            int query_buf_size = ntxOut * 51 + total_addr_size_sum;
+            char *query;
+            // Note: 51 = size of "format" when first 2 "%q"'s are replaced by
+            // "P2WPKH" and the final "%q" is empty
+            // Will allocate slightly more than enough for the final query.
+            int batch_buf_size = ntxOut * 51 + total_addr_size_sum;
+            batch = malloc(batch_buf_size * sizeof(char));
+
+            if (batch == NULL) {
+                perror("malloc");
+                exit(1);
+            }
+
             int address_type;
             char format[] = "SELECT privkey, %q FROM keys WHERE %q='%q'; ";
 
             // Check every output against our database
             for (int i = 0; i < ntxOut; i++) {
-                // determine the type of address - helps speed up sql.
+                // determine the type of address and build the query
                 if (strncmp(outputs[i], "1", 1) == 0) {
-                    address_type = p2pkh;
+                    query = sqlite3_mprintf(format, "P2PKH", "P2PKH",
+                                                outputs[i]);
                 } else if (strncmp(outputs[i], "3", 1) == 0) {
-                    address_type = p2sh;
+                    query = sqlite3_mprintf(format, "P2SH", "P2SH", outputs[i]);
                 } else {
-                    address_type = p2wpkh;
-                }
-
-                // build the query
-                switch(address_type) {
-                    case p2pkh:
-                        query = sqlite3_mprintf(format, "P2PKH", "P2PKH",
+                    query = sqlite3_mprintf(format, "P2WPKH", "P2WPKH",
                                                 outputs[i]);
-                        break;
-                    case p2sh:
-                        query = sqlite3_mprintf(format, "P2SH", "P2SH",
-                                                outputs[i]);
-                        break;
-                    case p2wpkh:
-                        query = sqlite3_mprintf(format, "P2WPKH", "P2WPKH",
-                                                outputs[i]);
-                        break;
-                    default:
-                        query = NULL;
                 }
 
                 if (query == NULL) {
@@ -171,7 +164,7 @@ int main() {
                 sqlite3_free(query);
             }
 
-            // write any returned records to the linked list
+            // write any returned records to this linked list
             struct node *exists = NULL;
 
             rc = sqlite3_exec(db, batch, callback, exists, &zErrMsg);
@@ -188,6 +181,16 @@ int main() {
                 // this transaction contains output addresses that we control
                 // TODO: we can create a new transaction that spends them.
                 printf("We have found a spendable output!\n");
+                struct node *cur = exists;
+                while (cur != NULL) {
+                    printf("Address: %s\nKey: %s\n", cur->data, cur->private);
+                    // TODO: do something
+                    free(cur->data);
+                    free(cur->private);
+                    struct node *temp = cur;
+                    cur = cur->next;
+                    free(temp);
+                }
             }
 
             // after handling all records, clean up and get ready to read the
@@ -199,8 +202,10 @@ int main() {
             }
 
             free(outputs);
+            memset(transaction, '\0', bufsize);
         }
-        // parent process closed the pipe, begin shutdown
+
+        // parent process has closed the pipe, begin shutdown
         sqlite3_close(db);
         if (close(fd[0]) == -1) {
             perror("close");
@@ -245,15 +250,15 @@ int main() {
             //      -> Store each output in output_address as we get to it
             int outputCount = 0; // temporary until we get the actual tx
             for (int i = 0; i < outputCount; i++) {
-                // parse the tx for each output this (using jansson)
+                // parse the tx for each output (using jansson)
                 // strcpy(output_address, transacation[index we want]);
 
                 // check if we own the output address
                 if (bloom_check(&address_bloom, &output_address,
                                 strlen(output_address)) == 1) {
                     // store positive addresses in linked liist
-                    struct node *cur = create_node(output_address);
-                    add_to_head(cur, positive_address_head);
+                    struct node *positive = create_node(output_address);
+                    add_to_head(positive, positive_address_head);
                     list_size++; // increment number of elements in the LL
                 }
             }
@@ -262,26 +267,26 @@ int main() {
                 /** Data is written to child like so
                  * 1. Transaction: x byte buffer
                  * 2. # of output addresses that will be sent: sizeof(int)
-                 * 3. # of bytes of incoming address: sizeof(int)
+                 * 3. # of bytes of incoming address (including \0): sizeof(int)
                  * 4. Address (null terminated): size described in previous msg
                 **/
 
-                // TODO: Note, we don't actually have access to transactions yet
-                // We will eventually just make a large buffer that we can write
+                // TODO: Note, we don't have access to transactions yet
+                // Eventually, we will make a large buffer that we can write
                 // to that can fit all transactions.
                 // *************************************************
 
                 // step 1
                 if (write(fd[1], transaction, bufsize) == -1) {
                     perror("write");
-                    fprintf(stderr, "Failed to write to child.");
+                    fprintf(stderr, "Failed to write transaction to child.");
                     exit(1);
                 }
                 // *************************************************
                 // step 2
                 if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
                     perror("write");
-                    fprintf(stderr, "Failed to write to child.");
+                    fprintf(stderr, "Failed to write quantity of addresses.");
                     exit(1);
                 }
 
@@ -291,13 +296,13 @@ int main() {
                     // step 3
                     if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
                         perror("write");
-                        fprintf(stderr, "Failed to write to child.");
+                        fprintf(stderr, "Failed to write address size to child.");
                         exit(1);
                     }
                     // step 4
                     if (write(fd[1], cur->data, cur->size) == -1) {
                         perror("write");
-                        fprintf(stderr, "Failed to write to child.");
+                        fprintf(stderr, "Failed to write address to child.");
                         exit(1);
                     }
 
@@ -310,14 +315,16 @@ int main() {
                     list_size--;
                 }
 
-                // TODO: delete this, it's for debugging
+                // TODO: delete this once we know the system works
                 if (list_size != 0) {
                     printf("ERROR failed to write all elements to the pipe.\n");
                 } else {
                     printf("Successfully wrote positive addresses to pipe.\n");
                 }
             }
+            memset(transaction, '\0', bufsize);
         }
+        // We also want to get here if user sends a signal
         // Close the pipe to shutdown the child process.
         if (close(fd[1]) == -1) {
             perror("close");
