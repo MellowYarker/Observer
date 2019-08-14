@@ -6,6 +6,7 @@
 
 struct node {
     char *data; // pointer to data
+    int size;
     struct node *next; // pointer to next node
 };
 
@@ -18,7 +19,7 @@ void add_to_head(struct node *Node, struct node **head);
 /*  Inserts all elements of the linked list into the bloom filter.
     Nodes are free'd as they're inserted. Returns 0 on success, 1 on error.
 */
-void batch_insert_filter(struct node *head, struct bloom *filter);
+void batch_insert_filter(struct node **head, struct bloom *filter);
 
 
 
