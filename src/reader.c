@@ -23,9 +23,10 @@ int main() {
     // load the bloom filter
     if (access((char *) &address_filter_file, F_OK) != -1) {
         if (bloom_load(&address_bloom, (char *) &address_filter_file) == 0) {
-            printf("Loaded Address filter.\n");
+            printf("Loaded address filter.\n");
         } else {
             printf("Failed to load bloom filter.\n");
+            exit(1);
         }
     } else {
         printf("Could not find filter: %s\n", address_filter_file);
@@ -44,6 +45,7 @@ int main() {
 
     // same memory space in parent and child, but not shared between them
     transaction = malloc(sizeof(char) * bufsize);
+    memset(transaction, '\0', bufsize);
 
     if (transaction == NULL) {
         perror("malloc");
@@ -167,7 +169,7 @@ int main() {
             // write any returned records to this linked list
             struct node *exists = NULL;
 
-            rc = sqlite3_exec(db, batch, callback, exists, &zErrMsg);
+            rc = sqlite3_exec(db, batch, callback, &exists, &zErrMsg);
             if (rc != SQLITE_OK) {
                 fprintf(stderr, "SQL error: %s\n", zErrMsg);
                 sqlite3_free(zErrMsg);
@@ -175,15 +177,14 @@ int main() {
 
             free(batch);
 
-            // TODO: at this point, we need to handle any records that are
-            // returned from the database
             if (exists != NULL) {
                 // this transaction contains output addresses that we control
                 // TODO: we can create a new transaction that spends them.
-                printf("We have found a spendable output!\n");
                 struct node *cur = exists;
                 while (cur != NULL) {
-                    printf("Address: %s\nKey: %s\n", cur->data, cur->private);
+                    printf("\nSpendable output discovered!\n");
+                    printf("Address: %s\nPrivate Key: %s\n", cur->data,
+                            cur->private);
                     // TODO: do something
                     free(cur->data);
                     free(cur->private);
@@ -237,10 +238,10 @@ int main() {
         // Step 3: begin (blocking) loop of reading from socket
 
         // Read from socket in loop, gather outputs from JSON
-        while (1) { // 1 will change to be "while we get a valid response"
+        int loop = 1;
+        while (loop) { // loop will change to be "while we get a valid response"
             size_t sizeout = 128;
             char output_address[sizeout]; // temporary address buffer
-            strncpy(output_address, "1ExampLe_Address", 34); // delete this
 
             // linked list of addresses that came back as "positive" from BF
             struct node *positive_address_head = NULL;
@@ -248,7 +249,7 @@ int main() {
 
             // TODO: here we loop over the Tx outputs
             //      -> Store each output in output_address as we get to it
-            int outputCount = 0; // temporary until we get the actual tx
+            int outputCount = 4; // temporary until we get the actual tx
             for (int i = 0; i < outputCount; i++) {
                 // parse the tx for each output (using jansson)
                 // strcpy(output_address, transacation[index we want]);
@@ -256,13 +257,13 @@ int main() {
                 // check if we own the output address
                 if (bloom_check(&address_bloom, &output_address,
                                 strlen(output_address)) == 1) {
-                    // store positive addresses in linked liist
+                    // store positive addresses in linked list
                     struct node *positive = create_node(output_address);
                     if (positive == NULL) {
                         fprintf(stderr, "Couldn't allocate space for Node.");
                         exit(1);
                     }
-                    add_to_head(positive, positive_address_head);
+                    add_to_head(positive, &positive_address_head);
                     list_size++; // increment number of elements in the LL
                 }
             }
@@ -283,30 +284,33 @@ int main() {
                 // step 1
                 if (write(fd[1], transaction, bufsize) == -1) {
                     perror("write");
-                    fprintf(stderr, "Failed to write transaction to child.");
+                    fprintf(stderr, "Failed to write transaction to the pipe.");
                     exit(1);
                 }
                 // *************************************************
                 // step 2
                 if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
                     perror("write");
-                    fprintf(stderr, "Failed to write quantity of addresses.");
+                    fprintf(stderr, "Failed to write the number of addresses"\
+                                    " to the pipe.");
                     exit(1);
                 }
 
                 struct node *cur = positive_address_head;
                 // write all the positive addresses to the pipe
-                while (cur->next != NULL) {
+                while (cur != NULL) {
                     // step 3
                     if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
                         perror("write");
-                        fprintf(stderr, "Failed to write address size to child.");
+                        fprintf(stderr, "Failed to write the address length to"\
+                                        " the pipe.");
                         exit(1);
                     }
                     // step 4
                     if (write(fd[1], cur->data, cur->size) == -1) {
                         perror("write");
-                        fprintf(stderr, "Failed to write address to child.");
+                        fprintf(stderr, "Failed to write the address to the"\
+                                        " pipe.");
                         exit(1);
                     }
 
@@ -318,13 +322,6 @@ int main() {
 
                     list_size--;
                 }
-
-                // TODO: delete this once we know the system works
-                if (list_size != 0) {
-                    printf("ERROR failed to write all elements to the pipe.\n");
-                } else {
-                    printf("Successfully wrote positive addresses to pipe.\n");
-                }
             }
             memset(transaction, '\0', bufsize);
         }
@@ -335,6 +332,7 @@ int main() {
             exit(1);
         }
         free(transaction);
+        wait(NULL);
     }
     
     // end of loop via signal?

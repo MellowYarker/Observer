@@ -5,16 +5,6 @@
 #include <time.h>
 
 
-// Addresses can range from 28-42 characters, we will add them to a linked list.
-int callback(void *head, int argc, char **argv, char **columns) {
-    struct node *Node = create_node(argv[0]);
-    if (Node == NULL) {
-        exit(1);
-    }
-    add_to_head(Node, head);
-    return 0;
-}
-
 struct node* create_node(char *data) {
     struct node *Node = malloc(sizeof(struct node));
 
@@ -22,42 +12,43 @@ struct node* create_node(char *data) {
         perror("malloc");
         return NULL;
     }
-    Node->data = malloc(strlen(data) * sizeof(char) + 1);
+    Node->size = strlen(data);
+    Node->data = malloc(Node->size * sizeof(char) + 1);
 
     if (Node->data == NULL) {
         perror("malloc");
         return NULL;
     }
     // fill with data
-    strncpy(Node->data, data, strlen(data));
+    strncpy(Node->data, data, Node->size + 1);
     Node->next = NULL;
 
     return Node;
 }
 
 /* Update the linked list such that Node is the new head. */
-void add_to_head(struct node *Node, struct node *head) {    
+void add_to_head(struct node *Node, struct node **head) {
     // empty linked list
-    if (head == NULL) {
-        head = Node;
+    if (*head == NULL) {
+        *head = Node;
     } else {
-        Node->next = head;
-        head = Node;
+        Node->next = *head;
+        *head = Node;
     }
 }
 
-void batch_insert_filter(struct node *head, struct bloom *filter) {
-    struct node *cur = head;
+void batch_insert_filter(struct node **head, struct bloom *filter) {
+    struct node *cur = *head;
     while (cur != NULL) {
-        bloom_add(filter, cur->data, strlen(cur->data));
+        bloom_add(filter, cur->data, cur->size);
         
         // free this node and iterate to the next one
-        struct node *next = cur->next;
+        struct node *temp = cur;
         free(cur->data);
-        free(cur);
-        cur = next; // cur is now the next node
+        cur = cur->next;
+        free(temp);
     }
-    // cur (the head) is NULL
+    *head = NULL;
     bloom_save(filter, "../used_address_filter.b");
 }
 
@@ -79,7 +70,6 @@ int main(int argc, char **argv) {
     clock_t start, end; // times the execution
 
     sqlite3 *db;
-    char *zErrMsg = 0;
     int rc;
 
     rc = sqlite3_open("../../db/observer.db", &db);
@@ -92,6 +82,7 @@ int main(int argc, char **argv) {
     // Note: we use 20 here because my database has a little over 530 million
     // records. ceil(530,029,220/27,500,000) = ceil(19.27) = 20
     for (int i = 0; i < 20; i++) {
+        sqlite3_stmt *stmt;
         printf("Adding addresses %d to %d.\n", offset, offset + limit);
         query = sqlite3_mprintf("SELECT * FROM usedAddresses LIMIT %d OFFSET %d;", limit, offset);
         if (query == NULL) {
@@ -100,12 +91,30 @@ int main(int argc, char **argv) {
         }
 
         start = clock();
+        rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
 
-        rc = sqlite3_exec(db, query, callback, head, &zErrMsg);
         if (rc != SQLITE_OK ) {
-            fprintf(stderr, "SQL error: %s\n", zErrMsg);
-            sqlite3_free(zErrMsg);
+            printf("error: %s", sqlite3_errmsg(db));
+            exit(1);
         }
+        sqlite3_free(query);
+
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+            struct node *Node = create_node((char *)
+                                            sqlite3_column_text(stmt, 0));
+
+            if (Node == NULL) {
+                exit(1);
+            }
+
+            add_to_head(Node, &head);
+        }
+        if (rc != SQLITE_DONE) {
+            printf("error: %s", sqlite3_errmsg(db));
+            return -1;
+        }
+        sqlite3_finalize(stmt);
+
         end = clock();
         printf("Took %f seconds to get batch %d records and add "\
                "them to the linked list.\n", 
@@ -114,7 +123,7 @@ int main(int argc, char **argv) {
 
         start = clock();
         // fill filter and save result
-        batch_insert_filter(head, &filter);
+        batch_insert_filter(&head, &filter);
         end = clock();
         printf("Took %f seconds to add batch %d to the bloom filter.\n", 
                ((double) end - start)/CLOCKS_PER_SEC, i);

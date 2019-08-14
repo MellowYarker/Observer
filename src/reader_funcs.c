@@ -28,13 +28,13 @@ struct node* create_node(char *data) {
 }
 
 /* Update the linked list such that Node is the new head. */
-void add_to_head(struct node *Node, struct node *head) {    
+void add_to_head(struct node *Node, struct node **head) {
     // empty linked list
-    if (head == NULL) {
-        head = Node;
+    if (*head == NULL) {
+        *head = Node;
     } else {
-        Node->next = head;
-        head = Node;
+        Node->next = *head;
+        *head = Node;
     }
 }
 
