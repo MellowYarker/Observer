@@ -11,9 +11,15 @@ gen_keys: generate_keys.o key_funcs.o
 	$^ ${libs}
 
 # collect and parse mempool transcations
-reader: reader.o reader_funcs.c
+reader: reader.o reader_funcs.c socket.c
 	${libbtc}/libtool --silent --tag=CC --mode=link gcc ${flags} -static -o $@ \
-	$^ ${libs}
+	$^ ${libs} -L/usr/local/libs -lwebsockets
 
 %.o: %.c
 	gcc -I${libbtc}/include/btc -I${libbloom} -c $< -o $@
+
+socket.c: socket.c
+	mkdir sock_build
+	cd sock_build
+	cmake .. && make
+	cd ..

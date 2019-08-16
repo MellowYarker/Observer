@@ -4,6 +4,7 @@
 
 #include "reader.h"
 
+
 struct node* create_node(char *data) {
     struct node *Node = malloc(sizeof(struct node));
 
@@ -46,6 +47,40 @@ int add_private(struct node *Node, char *private) {
     }
     strcpy(Node->private, private);
     return 0;
+}
+
+struct transaction* create_transaction(char *tx, int size) {
+    struct transaction *new = malloc(sizeof(struct transaction));
+    if (new == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+
+    new->tx = malloc(sizeof(char) * size + 1);
+    if (new->tx == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+
+    strcpy(new->tx, tx);
+    new->size = size;
+    new->nOutputs = 0;
+    // TODO parse the outputs of this transaction string with JANSSON
+    new->outputs = malloc(new->nOutputs * sizeof(char *));
+    if (new->outputs == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+
+    return new;
+}
+
+void free_transaction(struct transaction *tx) {
+    for (int i = 0; i < tx->nOutputs; i++) {
+        free(tx->outputs[i]);
+    }
+    free(tx->outputs);
+    free(tx->tx);
 }
 
 int callback(void *arr, int argc, char **argv, char **columns) {

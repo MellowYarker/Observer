@@ -11,6 +11,13 @@
 #include <ecc.h>
 #include <ecc_key.h>
 
+#include <libwebsockets.h>
+
+#ifdef __linux__
+    #include <sys/types.h>
+    #include <sys/wait.h>
+#endif
+
 #include "reader.h"
 
 int main() {
@@ -37,20 +44,6 @@ int main() {
     // set up the pipe, data flows from parent to child.
     int fd[2];
     pipe(fd);
-
-    // TODO: we need to see the size of a transaction to create a large
-    // enough buffer for all instances
-    char *transaction; // transaction string. txs are stored here after reading
-    int bufsize = 1000; // max buffer size of a transaction. Right pad with '/0'
-
-    // same memory space in parent and child, but not shared between them
-    transaction = malloc(sizeof(char) * bufsize);
-    memset(transaction, '\0', bufsize);
-
-    if (transaction == NULL) {
-        perror("malloc");
-        exit(1);
-    }
 
     int r = fork();
     if (r < 0) {
@@ -83,15 +76,29 @@ int main() {
 
         char **outputs; // array of pointers to output addresses
         int ntxOut = 0; // the number of output addresses
-        int txResponse;
+        int response; // TODO: (scan-15) use this to see if the parent closed the pipe
+
+        char *child_transaction;
+        int child_tx_size;
 
         // begin (blocking) loop of reading from the pipe
-        while ((txResponse = read(fd[0], transaction, bufsize)) != 0) {
-            if (txResponse == -1) {
+        // Note: Check the pipe protocol in the parent!
+        while ((response = read(fd[0], &child_tx_size, sizeof(int))) != 0) {
+            if (response == -1) {
                 perror("read");
                 exit(1);
             }
-            // set # of incoming addrs
+            child_transaction = malloc(child_tx_size * sizeof(char));
+            if (child_transaction == NULL) {
+                perror("malloc");
+                exit(1);
+            }
+
+            if (read(fd[0], child_transaction, child_tx_size) == -1) {
+                perror("read");
+                exit(1);
+            }
+
             if (read(fd[0], &ntxOut, sizeof(ntxOut)) == -1) {
                 perror("read");
                 exit(1);
@@ -203,7 +210,7 @@ int main() {
             }
 
             free(outputs);
-            memset(transaction, '\0', bufsize);
+            memset(child_transaction, '\0', child_tx_size);
         }
 
         // parent process has closed the pipe, begin shutdown
@@ -212,9 +219,9 @@ int main() {
             perror("close");
             exit(1);
         }
-        free(transaction);
+        free(child_transaction);
 
-        exit(0); // process terminated normally
+        exit(0);
     } else {
         // parent process
 
@@ -230,108 +237,138 @@ int main() {
             perror("close");
             exit(1);
         }
+        struct lws_context_creation_info info;
+        const char *p;
+        int n = 0, logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
 
-        // Step 2: Set up WebSocket connection with blockchain
+        lws_set_log_level(logs, NULL);
+        lwsl_user("Initializing WebSocket connection...\n");
 
-        // This will be completed later
+        memset(&info, 0, sizeof info); /* otherwise uninitialized garbage */
+        info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+        info.port = CONTEXT_PORT_NO_LISTEN; /* we do not run any server */
+        info.protocols = protocols;
 
-        // Step 3: begin (blocking) loop of reading from socket
+        /*
+        * since we know this lws context is only ever going to be used with
+        * one client wsis / fds / sockets at a time, let lws know it doesn't
+        * have to use the default allocations for fd tables up to ulimit -n.
+        * It will just allocate for 1 internal and 1 (+ 1 http2 nwsi) that we
+        * will use.
+        */
+        info.fd_limit_per_thread = 1 + 1 + 1;
 
-        // Read from socket in loop, gather outputs from JSON
-        int loop = 1;
-        while (loop) { // loop will change to be "while we get a valid response"
-            size_t sizeout = 128;
-            char output_address[sizeout]; // temporary address buffer
+        context = lws_create_context(&info);
+        if (!context) {
+            lwsl_err("lws init failed\n");
+            return 1;
+        }
+        struct transaction *cur_tx; // store transaction details here
+        while (n >= 0) {
+            n = lws_service(context, 1000); // read from the server
+            // tranasction_buf and transaction_size are declared in socket.c
+            if (transaction_buf != NULL) {
+                cur_tx = create_transaction(transaction_buf, transaction_size);
+                memset(transaction_buf, '\0', transaction_size);
+                transaction_buf = NULL; // otherwise we will enter this if block
+                free(transaction_buf);
 
-            // linked list of addresses that came back as "positive" from BF
-            struct node *positive_address_head = NULL;
-            int list_size = 0;
+                // linked list of addresses that came back as "positive" from BF
+                struct node *positive_address_head = NULL;
+                int list_size = 0;
 
-            // TODO: here we loop over the Tx outputs
-            //      -> Store each output in output_address as we get to it
-            int outputCount = 4; // temporary until we get the actual tx
-            for (int i = 0; i < outputCount; i++) {
-                // parse the tx for each output (using jansson)
-                // strcpy(output_address, transacation[index we want]);
+                printf("%s\n", cur_tx->tx);
 
-                // check if we own the output address
-                if (bloom_check(&address_bloom, &output_address,
-                                strlen(output_address)) == 1) {
-                    // store positive addresses in linked list
-                    struct node *positive = create_node(output_address);
-                    if (positive == NULL) {
-                        fprintf(stderr, "Couldn't allocate space for Node.");
-                        exit(1);
+                // loop over outputs
+                for (int i = 0; i < cur_tx->nOutputs; i++) {
+                    // check if we own the output address
+                    if (bloom_check(&address_bloom, cur_tx->outputs[i],
+                                    strlen(cur_tx->outputs[i])) == 1) {
+                        // store positive addresses in linked list
+                        struct node *positive = create_node(cur_tx->outputs[i]);
+                        if (positive == NULL) {
+                            fprintf(stderr, "Couldn't allocate space for Node");
+                            exit(1);
+                        }
+                        add_to_head(positive, &positive_address_head);
+                        list_size++; // increment number of elements in the LL
                     }
-                    add_to_head(positive, &positive_address_head);
-                    list_size++; // increment number of elements in the LL
                 }
-            }
+                // write to pipe if we have found potentially spendable addrs
+                if (positive_address_head != NULL) {
+                    printf("May have found spendable outputs. Checking "\
+                            "database.\n");
+                    /** Pipe Protocol
+                     * 1. Transaction size: sizeof(int)
+                     * 2. Transaction: size described in previous message
+                     * 3. # of output addresses that will be sent: sizeof(int)
+                     * 4. # of bytes of incoming address (+ '\0'): sizeof(int)
+                     * 5. Address (null terminated): size described in 4.
+                    **/
 
-            if (positive_address_head != NULL) {
-                /** Data is written to child like so
-                 * 1. Transaction: x byte buffer
-                 * 2. # of output addresses that will be sent: sizeof(int)
-                 * 3. # of bytes of incoming address (including \0): sizeof(int)
-                 * 4. Address (null terminated): size described in previous msg
-                **/
-
-                // TODO: Note, we don't have access to transactions yet
-                // Eventually, we will make a large buffer that we can write
-                // to that can fit all transactions.
-                // *************************************************
-
-                // step 1
-                if (write(fd[1], transaction, bufsize) == -1) {
-                    perror("write");
-                    fprintf(stderr, "Failed to write transaction to the pipe.");
-                    exit(1);
-                }
-                // *************************************************
-                // step 2
-                if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
-                    perror("write");
-                    fprintf(stderr, "Failed to write the number of addresses"\
-                                    " to the pipe.");
-                    exit(1);
-                }
-
-                struct node *cur = positive_address_head;
-                // write all the positive addresses to the pipe
-                while (cur != NULL) {
-                    // step 3
-                    if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
+                    // step 1
+                    if (write(fd[1], &cur_tx->size, sizeof(cur_tx->size)) == -1)
+                    {
                         perror("write");
-                        fprintf(stderr, "Failed to write the address length to"\
-                                        " the pipe.");
-                        exit(1);
-                    }
-                    // step 4
-                    if (write(fd[1], cur->data, cur->size) == -1) {
-                        perror("write");
-                        fprintf(stderr, "Failed to write the address to the"\
+                        fprintf(stderr, "Failed to write transaction size to"\
                                         " pipe.");
                         exit(1);
                     }
+                    // step 2
+                    if (write(fd[1], cur_tx->tx, cur_tx->size) == -1) {
+                        perror("write");
+                        fprintf(stderr, "Failed to write transaction to the"\
+                                        " pipe.");
+                        exit(1);
+                    }
+                    // step 3
+                    if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
+                        perror("write");
+                        fprintf(stderr, "Failed to write the number of "\
+                                        "addresses to the pipe.");
+                        exit(1);
+                    }
 
-                    // free the current node
-                    free(cur->data);
-                    struct node *temp = cur;
-                    cur = cur->next;
-                    free(temp);
+                    struct node *cur = positive_address_head;
+                    // write all the positive addresses to the pipe
+                    while (cur != NULL) {
+                        // step 4
+                        if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
+                            perror("write");
+                            fprintf(stderr, "Failed to write the address "\
+                                            "length to the pipe.");
+                            exit(1);
+                        }
+                        // step 5
+                        if (write(fd[1], cur->data, cur->size) == -1) {
+                            perror("write");
+                            fprintf(stderr, "Failed to write the address to "\
+                                            "the pipe.");
+                            exit(1);
+                        }
 
-                    list_size--;
+                        // free the current node
+                        free(cur->data);
+                        struct node *temp = cur;
+                        cur = cur->next;
+                        free(temp);
+
+                        list_size--;
+                    }
                 }
+                free_transaction(cur_tx);
             }
-            memset(transaction, '\0', bufsize);
         }
+
+        lws_context_destroy(context);
+        lwsl_user("Completed\n");
+
         // We also want to get here if user sends a signal
         // Close the pipe to shutdown the child process.
         if (close(fd[1]) == -1) {
             perror("close");
             exit(1);
         }
-        free(transaction);
         wait(NULL);
     }
     
