@@ -210,7 +210,7 @@ int main() {
             }
 
             free(outputs);
-            memset(child_transaction, '\0', 6000);
+            memset(child_transaction, '\0', child_tx_size);
         }
 
         // parent process has closed the pipe, begin shutdown
@@ -239,13 +239,7 @@ int main() {
         }
         struct lws_context_creation_info info;
         const char *p;
-        int n = 0, logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE
-                /* for LLL_ verbosity above NOTICE to be built into lws,
-                * lws must have been configured and built with
-                * -DCMAKE_BUILD_TYPE=DEBUG instead of =RELEASE */
-                /* | LLL_INFO */ /* | LLL_PARSER */ /* | LLL_HEADER */
-                /* | LLL_EXT */ /* | LLL_CLIENT */ /* | LLL_LATENCY */
-                /* | LLL_DEBUG */;
+        int n = 0, logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
 
         lws_set_log_level(logs, NULL);
         lwsl_user("Initializing WebSocket connection...\n");
@@ -293,7 +287,7 @@ int main() {
                         // store positive addresses in linked list
                         struct node *positive = create_node(cur_tx->outputs[i]);
                         if (positive == NULL) {
-                            fprintf(stderr, "Couldn't allocate space for Node.");
+                            fprintf(stderr, "Couldn't allocate space for Node");
                             exit(1);
                         }
                         add_to_head(positive, &positive_address_head);
@@ -308,12 +302,13 @@ int main() {
                      * 1. Transaction size: sizeof(int)
                      * 2. Transaction: size described in previous message
                      * 3. # of output addresses that will be sent: sizeof(int)
-                     * 4. # of bytes of incoming address (including \0): sizeof(int)
-                     * 5. Address (null terminated): size described in previous msg
+                     * 4. # of bytes of incoming address (+ '\0'): sizeof(int)
+                     * 5. Address (null terminated): size described in 4.
                     **/
 
                     // step 1
-                    if (write(fd[1], &cur_tx->size, sizeof(cur_tx->size)) == -1){
+                    if (write(fd[1], &cur_tx->size, sizeof(cur_tx->size)) == -1)
+                    {
                         perror("write");
                         fprintf(stderr, "Failed to write transaction size to"\
                                         " pipe.");
