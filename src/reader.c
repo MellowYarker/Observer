@@ -90,16 +90,28 @@ int main() {
 
         char **outputs; // array of pointers to output addresses
         int ntxOut = 0; // the number of output addresses
-        int txResponse;
+        int response;
 
-        char *child_transaction = malloc(sizeof(char) * 6000); // TODO: dynamic upgrade with protocol
+        char *child_transaction; // TODO: dynamic upgrade with protocol
+        int child_tx_size;
 
         // begin (blocking) loop of reading from the pipe
-        while ((txResponse = read(fd[0], child_transaction, 6000)) != 0) {
-            if (txResponse == -1) {
+        while ((response = read(fd[0], &child_tx_size, sizeof(int))) != 0) {
+            if (response == -1) {
                 perror("read");
                 exit(1);
             }
+            child_transaction = malloc(child_tx_size * sizeof(char) + 1);
+            if (child_transaction == NULL) {
+                perror("malloc");
+                exit(1);
+            }
+
+            if (read(fd[0], child_transaction, child_tx_size) == -1) {
+                perror("read");
+                exit(1);
+            }
+
             // set # of incoming addrs
             if (read(fd[0], &ntxOut, sizeof(ntxOut)) == -1) {
                 perror("read");
@@ -276,13 +288,11 @@ int main() {
         }
         struct transaction *cur_tx;
         while (n >= 0) {
-            n = lws_service(context, 1000);
+            n = lws_service(context, 1000); // read from the server
             if (transaction_buf != NULL) {
                 cur_tx = create_transaction(transaction_buf, transaction_size);
-                // printf("SIZE: %d\n", tx_buf);
-                // printf("TRANSACTION: %s\n", transaction);
                 memset(transaction_buf, '\0', transaction_size);
-                transaction_buf = NULL;
+                transaction_buf = NULL; // otherwise we will enter this if block
                 free(transaction_buf);
 
                 // linked list of addresses that came back as "positive" from BF
@@ -309,42 +319,50 @@ int main() {
 
                 if (positive_address_head != NULL) {
                     /** Data is written to child like so
-                     * 1. Transaction: x byte buffer
-                     * 2. # of output addresses that will be sent: sizeof(int)
-                     * 3. # of bytes of incoming address (including \0): sizeof(int)
-                     * 4. Address (null terminated): size described in previous msg
+                     * 1. Transaction size: sizeof(int)
+                     * 2. Transaction: size described in previous message
+                     * 3. # of output addresses that will be sent: sizeof(int)
+                     * 4. # of bytes of incoming address (including \0): sizeof(int)
+                     * 5. Address (null terminated): size described in previous msg
                     **/
 
-                    //  TODO: UPDATE PROTOCOL SO WE FIRST WRITE SIZE OF TX THEN TX
                     // step 1
-                    if (write(fd[1], cur_tx->tx, cur_tx->size) == -1) {
+                    if (write(fd[1], cur_tx->size, sizeof(cur_tx->size)) == -1){
                         perror("write");
-                        fprintf(stderr, "Failed to write transaction to the pipe.");
+                        fprintf(stderr, "Failed to write transaction size to"\
+                                        " pipe.");
                         exit(1);
                     }
                     // step 2
+                    if (write(fd[1], cur_tx->tx, cur_tx->size) == -1) {
+                        perror("write");
+                        fprintf(stderr, "Failed to write transaction to the"\
+                                        " pipe.");
+                        exit(1);
+                    }
+                    // step 3
                     if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
                         perror("write");
-                        fprintf(stderr, "Failed to write the number of addresses"\
-                                        " to the pipe.");
+                        fprintf(stderr, "Failed to write the number of "\
+                                        "addresses to the pipe.");
                         exit(1);
                     }
 
                     struct node *cur = positive_address_head;
                     // write all the positive addresses to the pipe
                     while (cur != NULL) {
-                        // step 3
+                        // step 4
                         if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
                             perror("write");
-                            fprintf(stderr, "Failed to write the address length to"\
-                                            " the pipe.");
+                            fprintf(stderr, "Failed to write the address "\
+                                            "length to the pipe.");
                             exit(1);
                         }
-                        // step 4
+                        // step 5
                         if (write(fd[1], cur->data, cur->size) == -1) {
                             perror("write");
-                            fprintf(stderr, "Failed to write the address to the"\
-                                            " pipe.");
+                            fprintf(stderr, "Failed to write the address to "\
+                                            "the pipe.");
                             exit(1);
                         }
 
