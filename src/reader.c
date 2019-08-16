@@ -45,20 +45,6 @@ int main() {
     int fd[2];
     pipe(fd);
 
-    // TODO: we need to see the size of a transaction to create a large
-    // enough buffer for all instances
-    char *transaction; // transaction string. txs are stored here after reading
-    int bufsize = 1000; // max buffer size of a transaction. Right pad with '/0'
-
-    // same memory space in parent and child, but not shared between them
-    transaction = malloc(sizeof(char) * bufsize);
-    memset(transaction, '\0', bufsize);
-
-    if (transaction == NULL) {
-        perror("malloc");
-        exit(1);
-    }
-
     int r = fork();
     if (r < 0) {
         perror("fork");
@@ -90,18 +76,19 @@ int main() {
 
         char **outputs; // array of pointers to output addresses
         int ntxOut = 0; // the number of output addresses
-        int response;
+        int response; // TODO: (scan-15) use this to see if the parent closed the pipe
 
-        char *child_transaction; // TODO: dynamic upgrade with protocol
+        char *child_transaction;
         int child_tx_size;
 
         // begin (blocking) loop of reading from the pipe
+        // Note: Check the pipe protocol in the parent!
         while ((response = read(fd[0], &child_tx_size, sizeof(int))) != 0) {
             if (response == -1) {
                 perror("read");
                 exit(1);
             }
-            child_transaction = malloc(child_tx_size * sizeof(char) + 1);
+            child_transaction = malloc(child_tx_size * sizeof(char));
             if (child_transaction == NULL) {
                 perror("malloc");
                 exit(1);
@@ -112,7 +99,6 @@ int main() {
                 exit(1);
             }
 
-            // set # of incoming addrs
             if (read(fd[0], &ntxOut, sizeof(ntxOut)) == -1) {
                 perror("read");
                 exit(1);
@@ -225,7 +211,6 @@ int main() {
 
             free(outputs);
             memset(child_transaction, '\0', 6000);
-            // free(child_transaction);
         }
 
         // parent process has closed the pipe, begin shutdown
@@ -236,7 +221,7 @@ int main() {
         }
         free(child_transaction);
 
-        exit(0); // process terminated normally
+        exit(0);
     } else {
         // parent process
 
@@ -262,10 +247,8 @@ int main() {
                 /* | LLL_EXT */ /* | LLL_CLIENT */ /* | LLL_LATENCY */
                 /* | LLL_DEBUG */;
 
-        // signal(SIGINT, sigint_handler);
-
         lws_set_log_level(logs, NULL);
-        lwsl_user("Reading transactions from blockchain.com\n");
+        lwsl_user("Initializing WebSocket connection...\n");
 
         memset(&info, 0, sizeof info); /* otherwise uninitialized garbage */
         info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
@@ -286,9 +269,10 @@ int main() {
             lwsl_err("lws init failed\n");
             return 1;
         }
-        struct transaction *cur_tx;
+        struct transaction *cur_tx; // store transaction details here
         while (n >= 0) {
             n = lws_service(context, 1000); // read from the server
+            // tranasction_buf and transaction_size are declared in socket.c
             if (transaction_buf != NULL) {
                 cur_tx = create_transaction(transaction_buf, transaction_size);
                 memset(transaction_buf, '\0', transaction_size);
@@ -299,7 +283,7 @@ int main() {
                 struct node *positive_address_head = NULL;
                 int list_size = 0;
 
-                printf("Transaction: %s\n", cur_tx->tx);
+                printf("%s\n", cur_tx->tx);
 
                 // loop over outputs
                 for (int i = 0; i < cur_tx->nOutputs; i++) {
@@ -316,9 +300,11 @@ int main() {
                         list_size++; // increment number of elements in the LL
                     }
                 }
-
+                // write to pipe if we have found potentially spendable addrs
                 if (positive_address_head != NULL) {
-                    /** Data is written to child like so
+                    printf("May have found spendable outputs. Checking "\
+                            "database.\n");
+                    /** Pipe Protocol
                      * 1. Transaction size: sizeof(int)
                      * 2. Transaction: size described in previous message
                      * 3. # of output addresses that will be sent: sizeof(int)
@@ -327,7 +313,7 @@ int main() {
                     **/
 
                     // step 1
-                    if (write(fd[1], cur_tx->size, sizeof(cur_tx->size)) == -1){
+                    if (write(fd[1], &cur_tx->size, sizeof(cur_tx->size)) == -1){
                         perror("write");
                         fprintf(stderr, "Failed to write transaction size to"\
                                         " pipe.");
@@ -388,7 +374,6 @@ int main() {
             perror("close");
             exit(1);
         }
-        free(transaction);
         wait(NULL);
     }
     

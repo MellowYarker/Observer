@@ -58,7 +58,6 @@ callback_tx_client(struct lws *wsi, enum lws_callback_reasons reason,
             break;
 
         case LWS_CALLBACK_CLIENT_WRITEABLE:
-            printf("Can write to server!\n");
             // this is where we write {"op": "unconfirmed_sub"}
             // ONLY WRITE if we haven't subscribed yet
             if (!subscribed) {
@@ -67,7 +66,7 @@ callback_tx_client(struct lws *wsi, enum lws_callback_reasons reason,
                 n = 0;
                 n = lws_snprintf((char *)msg + LWS_PRE, 125, 
                                 "{\"op\": \"unconfirmed_sub\"}");
-                lwsl_user("Sending subscription message.\n");
+                lwsl_user("Subscribing to unconfirmed transaction stream.\n");
 
                 m = lws_write(wsi, msg + LWS_PRE, n, LWS_WRITE_TEXT);
                 
@@ -87,7 +86,7 @@ callback_tx_client(struct lws *wsi, enum lws_callback_reasons reason,
             break;
 
         case LWS_CALLBACK_CLIENT_RECEIVE:
-            lwsl_user("LWS_CALLBACK_CLIENT_RECEIVE\n");
+            lwsl_user("New Transaction!\n");
             transaction_buf = malloc(len * sizeof(char) + 1);
             strcpy(transaction_buf, in);
             transaction_buf[len] = '\0';
@@ -121,57 +120,3 @@ const struct lws_protocols protocols[] = {
 	},
 	{ NULL, NULL, 0, 0 }
 };
-
-// int main(int argc, const char **argv)
-// {
-// 	struct lws_context_creation_info info;
-// 	const char *p;
-// 	int n = 0, logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE
-// 			/* for LLL_ verbosity above NOTICE to be built into lws,
-// 			 * lws must have been configured and built with
-// 			 * -DCMAKE_BUILD_TYPE=DEBUG instead of =RELEASE */
-// 			/* | LLL_INFO */ /* | LLL_PARSER */ /* | LLL_HEADER */
-// 			/* | LLL_EXT */ /* | LLL_CLIENT */ /* | LLL_LATENCY */
-// 			/* | LLL_DEBUG */;
-
-// 	// signal(SIGINT, sigint_handler);
-
-// 	lws_set_log_level(logs, NULL);
-// 	lwsl_user("Reading transactions from blockchain.com\n");
-
-// 	memset(&info, 0, sizeof info); /* otherwise uninitialized garbage */
-// 	info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-// 	info.port = CONTEXT_PORT_NO_LISTEN; /* we do not run any server */
-// 	info.protocols = protocols;
-
-// 	/*
-// 	 * since we know this lws context is only ever going to be used with
-// 	 * one client wsis / fds / sockets at a time, let lws know it doesn't
-// 	 * have to use the default allocations for fd tables up to ulimit -n.
-// 	 * It will just allocate for 1 internal and 1 (+ 1 http2 nwsi) that we
-// 	 * will use.
-// 	 */
-// 	info.fd_limit_per_thread = 1 + 1 + 1;
-
-// 	context = lws_create_context(&info);
-// 	if (!context) {
-// 		lwsl_err("lws init failed\n");
-// 		return 1;
-// 	}
-
-// 	while (n >= 0) {
-// 		n = lws_service(context, 1000);
-//         if (transaction != NULL) {
-//             printf("SIZE: %d\n", tx_buf);
-//             printf("TRANSACTION: %s\n", transaction);
-//             memset(transaction, '\0', tx_buf);
-//             transaction = NULL;
-//             free(transaction);
-//         }
-//     }
-
-// 	lws_context_destroy(context);
-// 	lwsl_user("Completed\n");
-
-// 	return 0;
-// }
