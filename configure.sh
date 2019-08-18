@@ -13,6 +13,9 @@ sudo make
 echo "Compiling libbloom..."
 cd ../libbloom
 sudo make
+cd build
+sudo rm libbloom.so
+sudo rm libbloom.so.2
 
 #compile libwebsockets
 echo "Compiling and installing libwebsockets"
