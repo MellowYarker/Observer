@@ -13,7 +13,7 @@ gen_keys: generate_keys.o key_funcs.o
 # collect and parse mempool transcations
 reader: reader.o reader_funcs.c socket.c
 	${libbtc}/libtool --silent --tag=CC --mode=link gcc ${flags} -static -o $@ \
-	$^ ${libs} -L/usr/local/libs -lwebsockets
+	$^ ${libs} cjson/cJSON.c -L/usr/local/libs -lwebsockets
 
 %.o: %.c
 	gcc -I${libbtc}/include/btc -I${libbloom} -c $< -o $@

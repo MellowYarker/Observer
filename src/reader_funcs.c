@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "reader.h"
+#include "cjson/cJSON.h"
 
 
 struct node* create_node(char *data) {
@@ -65,12 +66,72 @@ struct transaction* create_transaction(char *tx, int size) {
     strcpy(new->tx, tx);
     new->size = size;
     new->nOutputs = 0;
-    // TODO parse the outputs of this transaction string with JANSSON
+
+    // Parse the json for the output addresses
+    const cJSON *x = NULL;
+    const cJSON *outputs = NULL;
+    const cJSON *output = NULL;
+
+    cJSON *tx_structure = cJSON_Parse(new->tx);
+    if (tx_structure == NULL) {
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if (error_ptr != NULL) {
+            fprintf(stderr, "Error before: %s\n", error_ptr);
+            cJSON_Delete(tx_structure);
+            return NULL;
+        }
+    }
+
+    x = cJSON_GetObjectItemCaseSensitive(tx_structure, "x");
+    if (!cJSON_IsObject(x)) {
+        fprintf(stderr, "Couldn't parse transaction.");
+        cJSON_Delete(tx_structure);
+        return NULL;
+    }
+
+    outputs = cJSON_GetObjectItemCaseSensitive(x, "out");
+
+    // first check to see how many outputs there are
+    cJSON_ArrayForEach(output, outputs) {
+        const cJSON *address = NULL; // an outputs address
+        address = cJSON_GetObjectItemCaseSensitive(output, "addr");
+
+        if (cJSON_IsString(address) && (address->valuestring != NULL)) {
+            new->nOutputs++;
+        }
+    }
+
     new->outputs = malloc(new->nOutputs * sizeof(char *));
     if (new->outputs == NULL) {
         perror("malloc");
         return NULL;
     }
+
+    // now actually store each output
+    int i = 0;
+    cJSON_ArrayForEach(output, outputs) {
+        const cJSON *address = NULL; // an outputs address
+        address = cJSON_GetObjectItemCaseSensitive(output, "addr");
+
+        if (cJSON_IsString(address) && (address->valuestring != NULL)) {
+            printf("Checking %s\n", address->valuestring);
+            int addr_len = strlen(address->valuestring);
+
+            new->outputs[i] = malloc(addr_len * sizeof(char) + 1);
+            if (new->outputs[i] == NULL) {
+                perror("malloc");
+                cJSON_Delete(tx_structure);
+                return NULL;
+            }
+
+            strcpy(new->outputs[i], address->valuestring);
+            new->outputs[i][addr_len] = '\0';
+            i++;
+        } else {
+            printf("Skipping null output.\n");
+        }
+    }
+    cJSON_Delete(tx_structure);
 
     return new;
 }
@@ -81,6 +142,8 @@ void free_transaction(struct transaction *tx) {
     }
     free(tx->outputs);
     free(tx->tx);
+    free(tx);
+    tx = NULL;
 }
 
 int callback(void *arr, int argc, char **argv, char **columns) {
