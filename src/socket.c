@@ -11,6 +11,7 @@ static const char *server_address = "ws.blockchain.info", *pro = "wss";
 int subscribed = 0; // becomes 1 when we've subscribed to blockchain service
 char *transaction_buf;
 int transaction_size;
+int partial_write;
 
 static int connect_client(void) {
 	struct lws_client_connect_info i;
@@ -91,6 +92,13 @@ callback_tx_client(struct lws *wsi, enum lws_callback_reasons reason,
             strcpy(transaction_buf, in);
             transaction_buf[len] = '\0';
             transaction_size = len;
+            if (transaction_buf[len-1] != '}') {
+                printf("THIS TX FAILED: %s\n", transaction_buf);
+                printf("INCOMPLETE: %c, size: %d\n", transaction_buf[len - 1], len);
+                partial_write = 1;
+            } else {
+                partial_write = 0;
+            }
             break;
 
         /* rate-limited client connect retries */

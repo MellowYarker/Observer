@@ -268,7 +268,15 @@ int main() {
             n = lws_service(context, 1000); // read from the server
             // tranasction_buf and transaction_size are declared in socket.c
             if (transaction_buf != NULL) {
+                if (partial_write) {
+                    printf("Received a partial read. Store until the rest comes.\n");
+                    break;
+                }
                 cur_tx = create_transaction(transaction_buf, transaction_size);
+                if (cur_tx == NULL) {
+                    printf("Skipping this tranasction.\n");
+                    continue;
+                }
                 memset(transaction_buf, '\0', transaction_size);
                 transaction_buf = NULL; // otherwise we will enter this if block
                 free(transaction_buf);
@@ -276,8 +284,6 @@ int main() {
                 // linked list of addresses that came back as "positive" from BF
                 struct node *positive_address_head = NULL;
                 int list_size = 0;
-
-                printf("%s\n", cur_tx->tx);
 
                 // loop over outputs
                 for (int i = 0; i < cur_tx->nOutputs; i++) {
