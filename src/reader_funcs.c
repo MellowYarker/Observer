@@ -13,8 +13,9 @@ struct node* create_node(char *data) {
         perror("malloc");
         return NULL;
     }
+    Node->size = strlen(data) + 1; // size includes null terminator
     // fill with data
-    Node->data = malloc(strlen(data) * sizeof(char) + 1);
+    Node->data = malloc(Node->size * sizeof(char));
 
     if (Node->data == NULL) {
         perror("malloc");
@@ -22,8 +23,6 @@ struct node* create_node(char *data) {
     }
     Node->next = NULL;
 
-    // set properties of the struct
-    Node->size = strlen(data) + 1; // size includes null terminator
     strncpy(Node->data, data, Node->size); // this also copies null terminator
 
     return Node;
@@ -84,7 +83,7 @@ struct transaction* create_transaction(char *tx, int size) {
 
     x = cJSON_GetObjectItemCaseSensitive(tx_structure, "x");
     if (!cJSON_IsObject(x)) {
-        fprintf(stderr, "Couldn't parse transaction.");
+        fprintf(stderr, "Couldn't parse transaction.\n");
         cJSON_Delete(tx_structure);
         return NULL;
     }
@@ -142,8 +141,8 @@ void free_transaction(struct transaction *tx) {
     }
     free(tx->outputs);
     free(tx->tx);
-    free(tx);
     tx = NULL;
+    free(tx);
 }
 
 int callback(void *arr, int argc, char **argv, char **columns) {
@@ -152,11 +151,11 @@ int callback(void *arr, int argc, char **argv, char **columns) {
     if (strlen(argv[1]) > 0) {
         struct node *record = create_node(argv[1]);
         if (record == NULL) {
-            fprintf(stderr, "Couldn't allocate space for returned record.");
+            fprintf(stderr, "Couldn't allocate space for returned record.\n");
             return 1;
         }
         if (add_private(record, argv[0]) == 1) {
-            fprintf(stderr, "Couldn't allocate space for private key.");
+            fprintf(stderr, "Couldn't allocate space for private key.\n");
             return 1;
         }
         add_to_head(record, arr);
