@@ -92,9 +92,8 @@ callback_tx_client(struct lws *wsi, enum lws_callback_reasons reason,
             strcpy(transaction_buf, in);
             transaction_buf[len] = '\0';
             transaction_size = len;
-            if (transaction_buf[len-1] != '}') {
-                printf("THIS TX FAILED: %s\n", transaction_buf);
-                printf("INCOMPLETE: %c, size: %d\n", transaction_buf[len - 1], len);
+            // JSON object ends with }; observed largest tx size is 4082 bytes.
+            if (transaction_buf[len-1] != '}' || transaction_size == 4082) {
                 partial_write = 1;
             } else {
                 partial_write = 0;
