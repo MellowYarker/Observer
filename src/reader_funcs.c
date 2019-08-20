@@ -63,7 +63,8 @@ struct transaction* create_transaction(char *tx, int size) {
     }
 
     strcpy(new->tx, tx);
-    new->size = size;
+    new->size = size + 1;
+    new->tx[size] = '\0';
     new->nOutputs = 0;
 
     // Parse the json for the output addresses
@@ -75,7 +76,8 @@ struct transaction* create_transaction(char *tx, int size) {
     if (tx_structure == NULL) {
         const char *error_ptr = cJSON_GetErrorPtr();
         if (error_ptr != NULL) {
-            fprintf(stderr, "Error before: %s\n", error_ptr);
+            fprintf(stderr, "Error, not valid json.\n");
+            // fprintf(stderr, "Error before: %s\n", error_ptr);
             cJSON_Delete(tx_structure);
             return NULL;
         }
@@ -113,7 +115,7 @@ struct transaction* create_transaction(char *tx, int size) {
         address = cJSON_GetObjectItemCaseSensitive(output, "addr");
 
         if (cJSON_IsString(address) && (address->valuestring != NULL)) {
-            printf("Checking %s\n", address->valuestring);
+            // printf("Checking %s\n", address->valuestring);
             int addr_len = strlen(address->valuestring);
 
             new->outputs[i] = malloc(addr_len * sizeof(char) + 1);
@@ -126,8 +128,6 @@ struct transaction* create_transaction(char *tx, int size) {
             strcpy(new->outputs[i], address->valuestring);
             new->outputs[i][addr_len] = '\0';
             i++;
-        } else {
-            printf("Skipping null output.\n");
         }
     }
     cJSON_Delete(tx_structure);

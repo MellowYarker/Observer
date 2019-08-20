@@ -103,7 +103,7 @@ int main() {
                 exit(1);
             }
 
-            printf("Will check %d records.\n");
+            printf("Will check %d record(s).\n", ntxOut);
             outputs = malloc(sizeof(char *) * ntxOut);
 
             if (outputs == NULL) {
@@ -134,6 +134,7 @@ int main() {
                     perror("read");
                     exit(1);
                 }
+                printf("Received %s from parent.\n", outputs[j]);
             }
 
             char *batch; // all the queries combined in a string
@@ -200,6 +201,8 @@ int main() {
                     cur = cur->next;
                     free(temp);
                 }
+            } else {
+                printf("This transaction contained no spendable outputs.\n");
             }
 
             // after handling all records, clean up and get ready to read the
@@ -327,9 +330,9 @@ int main() {
                 buffer_size = 0;
 
                 if (cur_tx == NULL) {
-                    fprintf(stderr, "Had to discard previous partial "\
-                            "transactions.\nThis usually occurs when the order"\
-                            " of partial reads is lost.\n");
+                    fprintf(stderr, "Had to discard some partial transactions."\
+                                    "\nThis usually occurs when the order"\
+                                    " of partial reads is lost.\n");
                     continue;
                 }
 
@@ -342,7 +345,8 @@ int main() {
                     // check if we own the output address
                     if (bloom_check(&address_bloom, cur_tx->outputs[i],
                                     strlen(cur_tx->outputs[i])) == 1) {
-                        printf("\n************Positive hit***********\n");
+                        printf("\n********************Positive hit************"\
+                               "********\n");
                         // store positive addresses in linked list
                         struct node *positive = create_node(cur_tx->outputs[i]);
                         if (positive == NULL) {
