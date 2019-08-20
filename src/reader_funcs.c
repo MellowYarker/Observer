@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "reader.h"
+#include "cjson/cJSON.h"
 
 
 struct node* create_node(char *data) {
@@ -12,8 +13,9 @@ struct node* create_node(char *data) {
         perror("malloc");
         return NULL;
     }
+    Node->size = strlen(data) + 1; // size includes null terminator
     // fill with data
-    Node->data = malloc(strlen(data) * sizeof(char) + 1);
+    Node->data = malloc(Node->size * sizeof(char));
 
     if (Node->data == NULL) {
         perror("malloc");
@@ -21,8 +23,6 @@ struct node* create_node(char *data) {
     }
     Node->next = NULL;
 
-    // set properties of the struct
-    Node->size = strlen(data) + 1; // size includes null terminator
     strncpy(Node->data, data, Node->size); // this also copies null terminator
 
     return Node;
@@ -63,14 +63,74 @@ struct transaction* create_transaction(char *tx, int size) {
     }
 
     strcpy(new->tx, tx);
-    new->size = size;
+    new->size = size + 1;
+    new->tx[size] = '\0';
     new->nOutputs = 0;
-    // TODO parse the outputs of this transaction string with JANSSON
+
+    // Parse the json for the output addresses
+    const cJSON *x = NULL;
+    const cJSON *outputs = NULL;
+    const cJSON *output = NULL;
+
+    cJSON *tx_structure = cJSON_Parse(new->tx);
+    if (tx_structure == NULL) {
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if (error_ptr != NULL) {
+            fprintf(stderr, "Error, not valid json.\n");
+            // fprintf(stderr, "Error before: %s\n", error_ptr);
+            cJSON_Delete(tx_structure);
+            return NULL;
+        }
+    }
+
+    x = cJSON_GetObjectItemCaseSensitive(tx_structure, "x");
+    if (!cJSON_IsObject(x)) {
+        fprintf(stderr, "Couldn't parse transaction.\n");
+        cJSON_Delete(tx_structure);
+        return NULL;
+    }
+
+    outputs = cJSON_GetObjectItemCaseSensitive(x, "out");
+
+    // first check to see how many outputs there are
+    cJSON_ArrayForEach(output, outputs) {
+        const cJSON *address = NULL; // an outputs address
+        address = cJSON_GetObjectItemCaseSensitive(output, "addr");
+
+        if (cJSON_IsString(address) && (address->valuestring != NULL)) {
+            new->nOutputs++;
+        }
+    }
+
     new->outputs = malloc(new->nOutputs * sizeof(char *));
     if (new->outputs == NULL) {
         perror("malloc");
         return NULL;
     }
+
+    // now actually store each output
+    int i = 0;
+    cJSON_ArrayForEach(output, outputs) {
+        const cJSON *address = NULL; // an outputs address
+        address = cJSON_GetObjectItemCaseSensitive(output, "addr");
+
+        if (cJSON_IsString(address) && (address->valuestring != NULL)) {
+            // printf("Checking %s\n", address->valuestring);
+            int addr_len = strlen(address->valuestring);
+
+            new->outputs[i] = malloc(addr_len * sizeof(char) + 1);
+            if (new->outputs[i] == NULL) {
+                perror("malloc");
+                cJSON_Delete(tx_structure);
+                return NULL;
+            }
+
+            strcpy(new->outputs[i], address->valuestring);
+            new->outputs[i][addr_len] = '\0';
+            i++;
+        }
+    }
+    cJSON_Delete(tx_structure);
 
     return new;
 }
@@ -81,6 +141,8 @@ void free_transaction(struct transaction *tx) {
     }
     free(tx->outputs);
     free(tx->tx);
+    tx = NULL;
+    free(tx);
 }
 
 int callback(void *arr, int argc, char **argv, char **columns) {
@@ -89,11 +151,11 @@ int callback(void *arr, int argc, char **argv, char **columns) {
     if (strlen(argv[1]) > 0) {
         struct node *record = create_node(argv[1]);
         if (record == NULL) {
-            fprintf(stderr, "Couldn't allocate space for returned record.");
+            fprintf(stderr, "Couldn't allocate space for returned record.\n");
             return 1;
         }
         if (add_private(record, argv[0]) == 1) {
-            fprintf(stderr, "Couldn't allocate space for private key.");
+            fprintf(stderr, "Couldn't allocate space for private key.\n");
             return 1;
         }
         add_to_head(record, arr);

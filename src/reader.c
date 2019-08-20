@@ -22,7 +22,6 @@
 
 int main() {
     btc_ecc_start(); // load libbtc
-    // const btc_chainparams* chain = &btc_chainparams_main; // mainnet
     
     struct bloom address_bloom; // filter of all generated addresses.
     const char address_filter_file[] = "generated_addresses_filter.b";
@@ -103,6 +102,8 @@ int main() {
                 perror("read");
                 exit(1);
             }
+
+            printf("Will check %d record(s).\n", ntxOut);
             outputs = malloc(sizeof(char *) * ntxOut);
 
             if (outputs == NULL) {
@@ -133,6 +134,7 @@ int main() {
                     perror("read");
                     exit(1);
                 }
+                printf("Received %s from parent.\n", outputs[j]);
             }
 
             char *batch; // all the queries combined in a string
@@ -140,7 +142,7 @@ int main() {
             // Note: 51 = size of "format" when first 2 "%q"'s are replaced by
             // "P2WPKH" and the final "%q" is empty
             // Will allocate slightly more than enough for the final query.
-            int batch_buf_size = ntxOut * 51 + total_addr_size_sum;
+            int batch_buf_size = ntxOut * 51 + total_addr_size_sum + 1;
             batch = malloc(batch_buf_size * sizeof(char));
 
             if (batch == NULL) {
@@ -199,6 +201,8 @@ int main() {
                     cur = cur->next;
                     free(temp);
                 }
+            } else {
+                printf("This transaction contained no spendable outputs.\n");
             }
 
             // after handling all records, clean up and get ready to read the
@@ -264,30 +268,90 @@ int main() {
             return 1;
         }
         struct transaction *cur_tx; // store transaction details here
+        char *buffer = NULL; // a buffer that stores partial writes
+        int buffer_size = 0;
         while (n >= 0) {
             n = lws_service(context, 1000); // read from the server
             // tranasction_buf and transaction_size are declared in socket.c
             if (transaction_buf != NULL) {
-                cur_tx = create_transaction(transaction_buf, transaction_size);
+                /* 4 cases:
+                    1. Partial write & empty buffer
+                    2. Partial write & non-empty buffer (prev msg was partial)
+                    3. Complete write & non-empty buffer (...)
+                    4. Complete write & empty buffer
+                */
+                if (buffer == NULL) {
+                    buffer = malloc(sizeof(char) * (transaction_size + 1));
+                    if (buffer == NULL) {
+                        perror("malloc");
+                        exit(1);
+                    }
+                    strcpy(buffer, transaction_buf);
+                    buffer[transaction_size] = '\0';
+                    buffer_size = transaction_size + 1;
+
+                    // we will add the next message to the buffer
+                    if (partial_write) {
+                        printf("Received partial transaction. Waiting for"\
+                               " remaining message.\n");
+                        continue;
+                    }
+                } else if (buffer != NULL) {
+                    buffer = realloc(buffer, (buffer_size + transaction_size)
+                                     * sizeof(char));
+                    if (buffer == NULL) {
+                        perror("realloc");
+                        exit(1);
+                    }
+                    strcat(buffer, transaction_buf);
+                    buffer_size = buffer_size + transaction_size; // TODO: null terminate?
+
+                    // we will add the next message to the buffer
+                    if (partial_write) {
+                        printf("Received partial transaction. Waiting for"\
+                               " remaining message.\n");
+                        continue;
+                    } else {
+                        printf("MESSAGE COMPLETED\n");
+                    }
+                }
+
+                cur_tx = create_transaction(buffer, buffer_size);
+
+                // reset our buffers now that we saved the data in cur_tx
                 memset(transaction_buf, '\0', transaction_size);
                 transaction_buf = NULL; // otherwise we will enter this if block
                 free(transaction_buf);
+                transaction_size = 0;
+
+                memset(buffer, '\0', buffer_size - 1);
+                buffer = NULL;
+                free(buffer);
+                buffer_size = 0;
+
+                if (cur_tx == NULL) {
+                    fprintf(stderr, "Had to discard some partial transactions."\
+                                    "\nThis usually occurs when the order"\
+                                    " of partial reads is lost.\n");
+                    continue;
+                }
 
                 // linked list of addresses that came back as "positive" from BF
                 struct node *positive_address_head = NULL;
                 int list_size = 0;
-
-                printf("%s\n", cur_tx->tx);
 
                 // loop over outputs
                 for (int i = 0; i < cur_tx->nOutputs; i++) {
                     // check if we own the output address
                     if (bloom_check(&address_bloom, cur_tx->outputs[i],
                                     strlen(cur_tx->outputs[i])) == 1) {
+                        printf("\n********************Positive hit************"\
+                               "********\n");
                         // store positive addresses in linked list
                         struct node *positive = create_node(cur_tx->outputs[i]);
                         if (positive == NULL) {
-                            fprintf(stderr, "Couldn't allocate space for Node");
+                            fprintf(stderr, "Couldn't allocate space for Node"\
+                            "\n");
                             exit(1);
                         }
                         add_to_head(positive, &positive_address_head);
@@ -311,21 +375,21 @@ int main() {
                     {
                         perror("write");
                         fprintf(stderr, "Failed to write transaction size to"\
-                                        " pipe.");
+                                        " pipe.\n");
                         exit(1);
                     }
                     // step 2
                     if (write(fd[1], cur_tx->tx, cur_tx->size) == -1) {
                         perror("write");
                         fprintf(stderr, "Failed to write transaction to the"\
-                                        " pipe.");
+                                        " pipe.\n");
                         exit(1);
                     }
                     // step 3
                     if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
                         perror("write");
                         fprintf(stderr, "Failed to write the number of "\
-                                        "addresses to the pipe.");
+                                        "addresses to the pipe.\n");
                         exit(1);
                     }
 
@@ -336,14 +400,14 @@ int main() {
                         if (write(fd[1], &cur->size, sizeof(cur->size)) == -1) {
                             perror("write");
                             fprintf(stderr, "Failed to write the address "\
-                                            "length to the pipe.");
+                                            "length to the pipe.\n");
                             exit(1);
                         }
                         // step 5
                         if (write(fd[1], cur->data, cur->size) == -1) {
                             perror("write");
                             fprintf(stderr, "Failed to write the address to "\
-                                            "the pipe.");
+                                            "the pipe.\n");
                             exit(1);
                         }
 

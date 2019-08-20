@@ -2,6 +2,7 @@
 
 extern char *transaction_buf;
 extern int transaction_size;
+extern int partial_write; // represents if the current transaction is complete
 
 extern const struct lws_protocols protocols[];
 extern struct lws_context *context;
