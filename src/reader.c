@@ -1,3 +1,4 @@
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,12 @@
 #endif
 
 #include "reader.h"
+
+int interrupted = 0; // becomes 1 if we receive SIGINT
+
+void signal_handler(int signum) {
+    interrupted = 1;
+}
 
 int main() {
     btc_ecc_start(); // load libbtc
@@ -270,7 +277,18 @@ int main() {
         struct transaction *cur_tx; // store transaction details here
         char *buffer = NULL; // a buffer that stores partial writes
         int buffer_size = 0;
-        while (n >= 0) {
+
+        // start handling sigint here
+        struct sigaction sa;
+        sa.sa_handler = signal_handler;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        if (sigaction(SIGINT, &sa, NULL) == -1) {
+            fprintf(stderr, "Something went wrong setting up signal handler.\n");
+            exit(1);
+        }
+
+        while (n >= 0 && !interrupted) {
             n = lws_service(context, 1000); // read from the server
             // tranasction_buf and transaction_size are declared in socket.c
             if (transaction_buf != NULL) {
@@ -425,7 +443,7 @@ int main() {
         }
 
         lws_context_destroy(context);
-        lwsl_user("Completed\n");
+        lwsl_user("Connection closed.\n");
 
         // We also want to get here if user sends a signal
         // Close the pipe to shutdown the child process.
@@ -433,10 +451,10 @@ int main() {
             perror("close");
             exit(1);
         }
+        printf("Closed pipe to child. Waiting for response.\n");
         wait(NULL);
+        printf("Exit status received.\n");
     }
-    
-    // end of loop via signal?
 
     bloom_free(&address_bloom);
     btc_ecc_stop();
