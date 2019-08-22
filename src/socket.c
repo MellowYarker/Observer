@@ -56,6 +56,7 @@ callback_tx_client(struct lws *wsi, enum lws_callback_reasons reason,
         case LWS_CALLBACK_CLIENT_ESTABLISHED:
             lwsl_user("%s: established\n", __func__);
             lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
+            lwsl_user("Waiting for server to become writeable...\n");
             break;
 
         case LWS_CALLBACK_CLIENT_WRITEABLE:
