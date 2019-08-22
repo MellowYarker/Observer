@@ -47,6 +47,11 @@ int main() {
         exit(1);
     }
 
+    // some final counts to show the user
+    int total_transactions_checked = 0;
+    int total_addresses_checked = 0;
+    int positive_hit_count = 0;
+
     // set up the pipe, data flows from parent to child.
     int fd[2];
     pipe(fd);
@@ -396,6 +401,7 @@ int main() {
                                     strlen(cur_tx->outputs[i])) == 1) {
                         printf("\n********************Positive hit************"\
                                "********\n");
+                        positive_hit_count++;
                         // store positive addresses in linked list
                         struct node *positive = create_node(cur_tx->outputs[i]);
                         if (positive == NULL) {
@@ -407,6 +413,8 @@ int main() {
                         list_size++; // increment number of elements in the LL
                     }
                 }
+                total_transactions_checked++;
+                total_addresses_checked += cur_tx->nOutputs;
                 // write to pipe if we have found potentially spendable addrs
                 if (positive_address_head != NULL) {
                     printf("May have found spendable outputs. Checking "\
@@ -486,7 +494,10 @@ int main() {
         wait(&status);
 
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0){
-                printf("Finished cleaning up. Exiting.\n");
+            printf("Received and checked:\n\t%d Transactions\n\t%d Addresses\n",
+                    total_transactions_checked, total_addresses_checked);
+            printf("Positive hit count: %d\n", positive_hit_count);
+            printf("Finished cleaning up. Exiting.\n");
         } else {
             printf("Something went wrong in the child process. Exiting.\n");
         }
