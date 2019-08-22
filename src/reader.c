@@ -64,11 +64,13 @@ int main() {
             the bloom filter. I.e, it might be in our database.
         */
 
-        // close the write end of the pipe
         if (close(fd[1]) == -1) {
             perror("close");
             exit(1);
         }
+
+        signal(SIGINT, SIG_IGN); //ignore sigint, parent will close pipe instead
+
         // set up db connection, we do not modify db, so concurrency is safe
         sqlite3 *db;
         char *zErrMsg = 0;
@@ -82,7 +84,7 @@ int main() {
 
         char **outputs; // array of pointers to output addresses
         int ntxOut = 0; // the number of output addresses
-        int response; // TODO: (scan-15) use this to see if the parent closed the pipe
+        int response;
 
         char *child_transaction;
         int child_tx_size;
@@ -94,20 +96,28 @@ int main() {
                 perror("read");
                 exit(1);
             }
+
             child_transaction = malloc(child_tx_size * sizeof(char));
             if (child_transaction == NULL) {
                 perror("malloc");
                 exit(1);
             }
 
-            if (read(fd[0], child_transaction, child_tx_size) == -1) {
+            if ((response = read(fd[0], child_transaction, child_tx_size))
+                == -1) {
                 perror("read");
                 exit(1);
+            } else if (response == 0) {
+                fprintf(stdout, "Parent closed the pipe.\n");
+                break;
             }
 
-            if (read(fd[0], &ntxOut, sizeof(ntxOut)) == -1) {
+            if ((response = read(fd[0], &ntxOut, sizeof(ntxOut))) == -1) {
                 perror("read");
                 exit(1);
+            } else if (response == 0) {
+                fprintf(stdout, "Parent closed the pipe.\n");
+                break;
             }
 
             printf("Will check %d record(s).\n", ntxOut);
@@ -122,9 +132,18 @@ int main() {
 
             // read each output address into the outputs array
             for (int j = 0; j < ntxOut; j++) {
-                if (read(fd[0], &addr_size, sizeof(addr_size)) == -1) {
+                // error check response
+                if ((response = read(fd[0], &addr_size, sizeof(addr_size))) ==
+                    -1) {
                     perror("read");
                     exit(1);
+                } else if (response == 0) {
+                    fprintf(stdout, "Parent closed the pipe.\n");
+                    for (int addr = 0; addr < j; addr++) {
+                        free(outputs[addr]);
+                    }
+                    free(outputs);
+                    break;
                 }
                 // increment but don't count null terminator
                 total_addr_size_sum = total_addr_size_sum + addr_size - 1;
@@ -137,9 +156,21 @@ int main() {
                 }
 
                 // store the address directly in the array
-                if (read(fd[0], outputs[j], addr_size) == -1) {
+                // error check response
+                if ((response = read(fd[0], outputs[j], addr_size)) == -1) {
                     perror("read");
                     exit(1);
+                } else if (response == 0) {
+                    fprintf(stdout, "Parent closed the pipe.\n");
+                    if (j == 0) {
+                        free(outputs[j]);
+                    } else if (j > 0) {
+                        for (int addr = 0; addr < j; addr++) {
+                            free(outputs[addr]);
+                        }
+                    }
+                    free(outputs);
+                    break;
                 }
                 printf("Received %s from parent.\n", outputs[j]);
             }
@@ -212,8 +243,7 @@ int main() {
                 printf("This transaction contained no spendable outputs.\n");
             }
 
-            // after handling all records, clean up and get ready to read the
-            // next transaction!
+            // clean up and get ready to read the next transaction
 
             // free all the addresses we saved
             for (int j = 0; j < ntxOut; j++) {
@@ -243,11 +273,11 @@ int main() {
             This allows the parent process to avoid performing disk IO, allowing
             it to quickly read the next transaction.*/
 
-        // Step 1: close the read end of the pipe
         if (close(fd[0]) == -1) {
             perror("close");
             exit(1);
         }
+        // Create WebSocket connection with Blockchain.com
         struct lws_context_creation_info info;
         const char *p;
         int n = 0, logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
@@ -284,10 +314,11 @@ int main() {
         sigemptyset(&sa.sa_mask);
         sa.sa_flags = 0;
         if (sigaction(SIGINT, &sa, NULL) == -1) {
-            fprintf(stderr, "Something went wrong setting up signal handler.\n");
+            fprintf(stderr, "Something went wrong setting up signal handler\n");
             exit(1);
         }
 
+        // loop where we handle messages from the server
         while (n >= 0 && !interrupted) {
             n = lws_service(context, 1000); // read from the server
             // tranasction_buf and transaction_size are declared in socket.c
@@ -445,15 +476,20 @@ int main() {
         lws_context_destroy(context);
         lwsl_user("Connection closed.\n");
 
-        // We also want to get here if user sends a signal
         // Close the pipe to shutdown the child process.
         if (close(fd[1]) == -1) {
             perror("close");
             exit(1);
         }
-        printf("Closed pipe to child. Waiting for response.\n");
-        wait(NULL);
-        printf("Exit status received.\n");
+
+        int status;
+        wait(&status);
+
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0){
+                printf("Finished cleaning up. Exiting.\n");
+        } else {
+            printf("Something went wrong in the child process. Exiting.\n");
+        }
     }
 
     bloom_free(&address_bloom);
