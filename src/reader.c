@@ -369,8 +369,8 @@ int main() {
             if (transaction_buf != NULL) {
                 /* 4 cases:
                     1. Partial write & empty buffer
-                    3. Complete write & non-empty buffer (...)
                     2. Partial write & non-empty buffer (prev msg was partial)
+                    3. Complete write & non-empty buffer (...)
                     4. Complete write & empty buffer
                 */
                 if (buffer == NULL) {
@@ -459,7 +459,7 @@ int main() {
                         5. Send the size of the script: sizeof(int)
                         6. Send the script: ^size^
                     */
-                    // step 1. (new)
+                    // step 1
                     if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
                         perror("write");
                         fprintf(stderr, "Failed to write the number of outputs"\
@@ -467,14 +467,12 @@ int main() {
                         exit(1);
                     }
 
-                    // (new)
                     for (int i = 0; i < cur_tx->nOutputs; i++) {
                         // write the positive output
                         if (cur_tx->outputs[i]->positive) {
                             int addr_size =
                                 strlen(cur_tx->outputs[i]->address) + 1;
 
-                            // step 2 (new)
                             if (write(fd[1], &addr_size, sizeof(int)) == -1) {
                                 perror("write");
                                 fprintf(stderr, "Failed to write the address "\
@@ -482,7 +480,6 @@ int main() {
                                 exit(1);
                             }
 
-                            // step 3 (new)
                             if (write(fd[1], cur_tx->outputs[i]->address,
                                       addr_size) == -1) {
                                 perror("write");
@@ -491,7 +488,6 @@ int main() {
                                 exit(1);
                             }
 
-                            // step 4 (new)
                             if (write(fd[1], &(cur_tx->outputs[i]->value),
                                       sizeof(unsigned int)) == -1) {
                                 perror("write");
@@ -503,7 +499,6 @@ int main() {
                             int script_size =
                                 strlen(cur_tx->outputs[i]->script) + 1;
 
-                            // step 5 (new)
                             if (write(fd[1], &script_size, sizeof(int)) == -1) {
                                 perror("write");
                                 fprintf(stderr, "Failed to write the script "\
@@ -511,7 +506,6 @@ int main() {
                                 exit(1);
                             }
 
-                            // step 6 (new)
                             if (write(fd[1], cur_tx->outputs[i]->script,
                                       script_size) == -1) {
                                 perror("write");
