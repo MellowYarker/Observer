@@ -110,8 +110,8 @@ struct transaction* create_transaction(char *tx, int size) {
         const char *error_ptr = cJSON_GetErrorPtr();
         if (error_ptr != NULL) {
             fprintf(stderr, "Error, not valid json.\n");
-            free(new);
             free(new->tx);
+            free(new);
             cJSON_Delete(tx_structure);
             return NULL;
         }
@@ -120,8 +120,8 @@ struct transaction* create_transaction(char *tx, int size) {
     x = cJSON_GetObjectItemCaseSensitive(tx_structure, "x");
     if (!cJSON_IsObject(x)) {
         fprintf(stderr, "Couldn't parse transaction.\n");
-        free(new);
         free(new->tx);
+        free(new);
         cJSON_Delete(tx_structure);
         return NULL;
     }
@@ -140,8 +140,8 @@ struct transaction* create_transaction(char *tx, int size) {
     // each element is a pointer to an output struct
     new->outputs = malloc(new->nOutputs * sizeof(struct output*));
     if (new->outputs == NULL) {
-        free(new);
         free(new->tx);
+        free(new);
         perror("malloc");
         return NULL;
     }
@@ -167,8 +167,9 @@ struct transaction* create_transaction(char *tx, int size) {
                                             script->valuestring);
             if (new->outputs[i] == NULL) {
                 perror("malloc");
-                free(new);
                 free(new->tx);
+                free(new->outputs)
+                free(new);
                 cJSON_Delete(tx_structure);
                 return NULL;
             }
