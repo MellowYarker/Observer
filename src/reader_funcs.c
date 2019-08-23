@@ -49,6 +49,38 @@ int add_private(struct node *Node, char *private) {
     return 0;
 }
 
+struct output* create_output(char *address, unsigned int value, char *script) {
+    int addr_size = strlen(address);
+    int script_size = strlen(script);
+
+    struct output *new = malloc(sizeof(struct output));
+    if (new == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+
+    new->address = malloc((addr_size + 1) * sizeof(char));
+    if (new->address == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+    strncpy(new->address, address, addr_size);
+    new->address[addr_size] = '\0';
+
+    new->value = value;
+
+    new->script = malloc((script_size + 1) * sizeof(char));
+    if (new->script == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+    strncpy(new->script, script, script_size);
+    new->script[script_size] = '\0';
+    new->positive = 0;
+
+    return new;
+}
+
 struct transaction* create_transaction(char *tx, int size) {
     struct transaction *new = malloc(sizeof(struct transaction));
     if (new == NULL) {
@@ -59,6 +91,7 @@ struct transaction* create_transaction(char *tx, int size) {
     new->tx = malloc(sizeof(char) * size + 1);
     if (new->tx == NULL) {
         perror("malloc");
+        free(new);
         return NULL;
     }
 
@@ -77,7 +110,8 @@ struct transaction* create_transaction(char *tx, int size) {
         const char *error_ptr = cJSON_GetErrorPtr();
         if (error_ptr != NULL) {
             fprintf(stderr, "Error, not valid json.\n");
-            // fprintf(stderr, "Error before: %s\n", error_ptr);
+            free(new->tx);
+            free(new);
             cJSON_Delete(tx_structure);
             return NULL;
         }
@@ -86,6 +120,8 @@ struct transaction* create_transaction(char *tx, int size) {
     x = cJSON_GetObjectItemCaseSensitive(tx_structure, "x");
     if (!cJSON_IsObject(x)) {
         fprintf(stderr, "Couldn't parse transaction.\n");
+        free(new->tx);
+        free(new);
         cJSON_Delete(tx_structure);
         return NULL;
     }
@@ -101,9 +137,11 @@ struct transaction* create_transaction(char *tx, int size) {
             new->nOutputs++;
         }
     }
-
-    new->outputs = malloc(new->nOutputs * sizeof(char *));
+    // each element is a pointer to an output struct
+    new->outputs = malloc(new->nOutputs * sizeof(struct output*));
     if (new->outputs == NULL) {
+        free(new->tx);
+        free(new);
         perror("malloc");
         return NULL;
     }
@@ -111,22 +149,30 @@ struct transaction* create_transaction(char *tx, int size) {
     // now actually store each output
     int i = 0;
     cJSON_ArrayForEach(output, outputs) {
-        const cJSON *address = NULL; // an outputs address
+        const cJSON *address = NULL; // output address
+        const cJSON *value = NULL; // value in satoshi
+        const cJSON *script = NULL; // the locking script
+
         address = cJSON_GetObjectItemCaseSensitive(output, "addr");
+        value = cJSON_GetObjectItemCaseSensitive(output, "value");
+        script = cJSON_GetObjectItemCaseSensitive(output, "script");
 
-        if (cJSON_IsString(address) && (address->valuestring != NULL)) {
-            // printf("Checking %s\n", address->valuestring);
-            int addr_len = strlen(address->valuestring);
+        // if we find no errors, create the output
+        if (cJSON_IsString(address) && (address->valuestring != NULL) &&
+            cJSON_IsString(script) && (script->valuestring != NULL) &&
+            cJSON_IsNumber(value)) {
 
-            new->outputs[i] = malloc(addr_len * sizeof(char) + 1);
+            new->outputs[i] = create_output(address->valuestring,
+                                            value->valueint,
+                                            script->valuestring);
             if (new->outputs[i] == NULL) {
                 perror("malloc");
+                free(new->tx);
+                free(new->outputs);
+                free(new);
                 cJSON_Delete(tx_structure);
                 return NULL;
             }
-
-            strcpy(new->outputs[i], address->valuestring);
-            new->outputs[i][addr_len] = '\0';
             i++;
         }
     }
@@ -137,11 +183,12 @@ struct transaction* create_transaction(char *tx, int size) {
 
 void free_transaction(struct transaction *tx) {
     for (int i = 0; i < tx->nOutputs; i++) {
-        free(tx->outputs[i]);
+        free(tx->outputs[i]->address);
+        free(tx->outputs[i]->script);
+        free(tx->outputs[i]); // pointer to output struct
     }
     free(tx->outputs);
     free(tx->tx);
-    tx = NULL;
     free(tx);
 }
 

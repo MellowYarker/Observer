@@ -17,11 +17,19 @@ struct node {
     struct node *next; // pointer to next node
 };
 
+/* An output from a transaction. */
+struct output {
+    char *address; // bitcoin address
+    unsigned int value; // value in satoshi's
+    char *script; // the "locking" script
+    int positive; // 1 if positive after bloom filter check, 0 if negative
+};
+
 /* A mempool transaction. */
 struct transaction {
     char *tx; // pointer to the transaction string
     int size; // size of the transaction string
-    char **outputs; // a list of this transaction's output addresses
+    struct output **outputs; // a list of this transaction's outputs
     int nOutputs; // the number of output addresses in this transaction
 };
 
@@ -35,6 +43,10 @@ void add_to_head(struct node *Node, struct node **head);
     Returns 0 on success, 1 on failure.
 */
 int add_private(struct node *Node, char *private);
+
+/*  Creates a new transaction struct consisting of the adddr, val, and script
+    arguments. Returns NULL on failure. */
+struct output* create_output(char *address, unsigned int value, char *script);
 
 /*  Creates a new tranasction struct with the given tx string.
     Returns NULL on failure.
