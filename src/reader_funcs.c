@@ -168,7 +168,7 @@ struct transaction* create_transaction(char *tx, int size) {
             if (new->outputs[i] == NULL) {
                 perror("malloc");
                 free(new->tx);
-                free(new->outputs)
+                free(new->outputs);
                 free(new);
                 cJSON_Delete(tx_structure);
                 return NULL;
