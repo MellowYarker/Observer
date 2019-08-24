@@ -16,6 +16,7 @@ CREATE TABLE spendable(
     -- https://github.com/bitcoin/bitcoin/blob/v0.17.0/src/script/script.h#L31-L32
     script VARCHAR(10000),
     value UNSIGNED INTEGER,
+    privkey VARCHAR(32),
     PRIMARY KEY (address, script)
 );
 
