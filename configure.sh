@@ -19,11 +19,13 @@ sudo rm libbloom.so.2
 
 #compile libwebsockets
 echo "Compiling and installing libwebsockets"
-cd ../libwebsockets
+cd ../../libwebsockets
 mkdir build
 cd build
 cmake ..
 make && sudo make install
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
+sudo ldconfig
 cd ..
 
 # create sqlite3 database with keys table
