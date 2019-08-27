@@ -87,17 +87,6 @@ struct transaction* create_transaction(char *tx, int size) {
         perror("malloc");
         return NULL;
     }
-
-    new->tx = malloc(sizeof(char) * size + 1);
-    if (new->tx == NULL) {
-        perror("malloc");
-        free(new);
-        return NULL;
-    }
-
-    strcpy(new->tx, tx);
-    new->size = size + 1;
-    new->tx[size] = '\0';
     new->nOutputs = 0;
 
     // Parse the json for the output addresses
@@ -105,12 +94,12 @@ struct transaction* create_transaction(char *tx, int size) {
     const cJSON *outputs = NULL;
     const cJSON *output = NULL;
 
-    cJSON *tx_structure = cJSON_Parse(new->tx);
+    cJSON *tx_structure = cJSON_Parse(tx);
     if (tx_structure == NULL) {
         const char *error_ptr = cJSON_GetErrorPtr();
         if (error_ptr != NULL) {
-            fprintf(stderr, "Error, not valid json.\n");
-            free(new->tx);
+            // TODO: Why do we get to this state?
+            // fprintf(stderr, "Error, not valid JSON.\n");
             free(new);
             cJSON_Delete(tx_structure);
             return NULL;
@@ -119,8 +108,9 @@ struct transaction* create_transaction(char *tx, int size) {
 
     x = cJSON_GetObjectItemCaseSensitive(tx_structure, "x");
     if (!cJSON_IsObject(x)) {
-        fprintf(stderr, "Couldn't parse transaction.\n");
-        free(new->tx);
+        // TODO: Why do we get to this state?
+        // fprintf(stderr, "Couldn't parse message from server. The message "\
+        //                 "likely came in the wrong order.\n");
         free(new);
         cJSON_Delete(tx_structure);
         return NULL;
@@ -140,9 +130,9 @@ struct transaction* create_transaction(char *tx, int size) {
     // each element is a pointer to an output struct
     new->outputs = malloc(new->nOutputs * sizeof(struct output*));
     if (new->outputs == NULL) {
-        free(new->tx);
         free(new);
         perror("malloc");
+        cJSON_Delete(tx_structure);
         return NULL;
     }
 
@@ -167,7 +157,6 @@ struct transaction* create_transaction(char *tx, int size) {
                                             script->valuestring);
             if (new->outputs[i] == NULL) {
                 perror("malloc");
-                free(new->tx);
                 free(new->outputs);
                 free(new);
                 cJSON_Delete(tx_structure);
@@ -187,9 +176,8 @@ void free_transaction(struct transaction *tx) {
         free(tx->outputs[i]->script);
         free(tx->outputs[i]); // pointer to output struct
     }
-    free(tx->outputs);
-    free(tx->tx);
-    free(tx);
+    free(tx->outputs); // array
+    free(tx); // tranasction struct
 }
 
 int callback(void *arr, int argc, char **argv, char **columns) {

@@ -3,6 +3,7 @@
 extern char *transaction_buf;
 extern int transaction_size;
 extern int partial_write; // represents if the current transaction is complete
+extern int discard; // if 1, clear partial read buffer
 
 extern const struct lws_protocols protocols[];
 extern struct lws_context *context;
@@ -27,8 +28,6 @@ struct output {
 
 /* A mempool transaction. */
 struct transaction {
-    char *tx; // pointer to the transaction string
-    int size; // size of the transaction string
     struct output **outputs; // a list of this transaction's outputs
     int nOutputs; // the number of output addresses in this transaction
 };
