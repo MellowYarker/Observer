@@ -391,7 +391,9 @@ int main() {
             }
         } else {
             printf("Could not find filter: %s\n", address_filter_file);
-            printf("You have not generated any addresses.\n");
+            printf("You have not generated any addresses.\nPlease generate "\
+                   "some addresses via the gen_keys program before scanning "\
+                   "the network for spendable outputs.\n");
             exit(1);
         }
 

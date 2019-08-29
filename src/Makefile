@@ -1,16 +1,22 @@
 libbloom = ../libbloom
 STATIC_BLOOM = ${libbloom}/build
 libbtc = ../libbtc
-flags = -g -O2 -W -std=gnu99 -pedantic -Wno-unused-function -Wno-long-long \
-		-Wno-overlength-strings
+flags = -g -O2 -W -std=gnu99 -Wno-stringop-overflow \
+		-Wno-missing-field-initializers
 libs = ${libbtc}/libbtc.la -L${STATIC_BLOOM} -lbloom -lsqlite3 -lm
 
-# generate bitcoin addresses
+.PHONY: all clean
+
+# compiles both the gen_keys program and the reader program
+all: gen_keys reader
+
+# generates bitcoin addresses
 gen_keys: generate_keys.o key_funcs.o
 	${libbtc}/libtool --silent --tag=CC --mode=link gcc ${flags} -static -o $@ \
 	$^ ${libs}
 
-# collect and parse mempool transcations
+# collect and parse mempool transcations -- please generate key sets before
+# running the reader program!
 reader: reader.o reader_funcs.c socket.c
 	${libbtc}/libtool --silent --tag=CC --mode=link gcc ${flags} -static -o $@ \
 	$^ ${libs} cjson/cJSON.c -L/usr/local/lib -lwebsockets
@@ -23,3 +29,8 @@ socket.c: socket.c
 	cd sock_build
 	cmake .. && make
 	cd ..
+
+clean:
+	rm -rf *.o
+	rm -f reader
+	rm -f gen_keys
