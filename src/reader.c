@@ -318,7 +318,7 @@ int main() {
 
                     free(cur->data);
                     free(cur->private);
-                    struct node * temp = cur;
+                    struct node *temp = cur;
                     cur = cur->next;
                     free(temp);
                 }
