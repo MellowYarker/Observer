@@ -94,7 +94,7 @@ callback_tx_client(struct lws *wsi, enum lws_callback_reasons reason,
                 free(transaction_buf);
                 transaction_buf = NULL;
             }
-            transaction_buf = malloc((len + 1) * sizeof(char));
+            transaction_buf = malloc(len + 1);
 
             if (transaction_buf == NULL) {
                 perror("malloc");

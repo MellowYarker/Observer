@@ -108,7 +108,7 @@ int main() {
                 // increment but don't count null terminator
                 total_addr_size_sum += (addr_size - 1);
 
-                out->address = malloc(sizeof(char) * addr_size);
+                out->address = malloc(addr_size);
                 if (out->address == NULL) {
                     perror("malloc");
                     exit(1);
@@ -174,7 +174,7 @@ int main() {
                     free(outputs);
                     break;
                 }
-                out->script = malloc(sizeof(char) * script_size);
+                out->script = malloc(script_size);
                 if (out->script == NULL) {
                     perror("malloc");
                     exit(1);
@@ -461,7 +461,7 @@ int main() {
                 }
 
                 if (buffer == NULL) {
-                    buffer = malloc(sizeof(char) * (transaction_size + 1));
+                    buffer = malloc(transaction_size + 1);
                     if (buffer == NULL) {
                         perror("malloc");
                         exit(1);
@@ -477,8 +477,7 @@ int main() {
                     }
                 } else if (buffer != NULL) {
                     // buffer has something in it, we want to append to the msg
-                    buffer = realloc(buffer, (buffer_size + transaction_size)
-                                     * sizeof(char));
+                    buffer = realloc(buffer, buffer_size + transaction_size);
                     if (buffer == NULL) {
                         perror("realloc");
                         exit(1);

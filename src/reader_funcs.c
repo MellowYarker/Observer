@@ -15,7 +15,7 @@ struct node* create_node(char *data) {
     }
     Node->size = strlen(data) + 1; // size includes null terminator
     // fill with data
-    Node->data = malloc(Node->size * sizeof(char));
+    Node->data = malloc(Node->size);
 
     if (Node->data == NULL) {
         perror("malloc");
@@ -40,7 +40,7 @@ void add_to_head(struct node *Node, struct node **head) {
 }
 
 int add_private(struct node *Node, char *private) {
-    Node->private = malloc(strlen(private) * sizeof(char) + 1);
+    Node->private = malloc(strlen(private) + 1);
     if (Node->private == NULL) {
         perror("malloc");
         return 1;
@@ -59,7 +59,7 @@ struct output* create_output(char *address, unsigned int value, char *script) {
         return NULL;
     }
 
-    new->address = malloc((addr_size + 1) * sizeof(char));
+    new->address = malloc(addr_size + 1);
     if (new->address == NULL) {
         perror("malloc");
         return NULL;
@@ -69,7 +69,7 @@ struct output* create_output(char *address, unsigned int value, char *script) {
 
     new->value = value;
 
-    new->script = malloc((script_size + 1) * sizeof(char));
+    new->script = malloc(script_size + 1);
     if (new->script == NULL) {
         perror("malloc");
         return NULL;
