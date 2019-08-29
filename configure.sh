@@ -38,6 +38,7 @@ then
     echo "$db already exists."
 else
     sudo sqlite3 $db < configure.sql
+    sudo chmod 666 $db
 fi
 
 cd ../src/init_download
