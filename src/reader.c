@@ -106,9 +106,9 @@ int main() {
                     break;
                 }
                 // increment but don't count null terminator
-                total_addr_size_sum = total_addr_size_sum + addr_size - 1;
+                total_addr_size_sum += (addr_size - 1);
 
-                out->address = malloc(sizeof(char) * addr_size);
+                out->address = malloc(addr_size);
                 if (out->address == NULL) {
                     perror("malloc");
                     exit(1);
@@ -136,8 +136,8 @@ int main() {
                 printf("Received %s from parent.\n", outputs[i]->address);
 
                 // 4. value
-                if ((response = read(fd[0], &(out->value), sizeof(unsigned int)))
-                    == -1) {
+                if ((response = read(fd[0], &(out->value),
+                                     sizeof(unsigned int))) == -1) {
                     perror("read");
                     exit(1);
                 } else if (response == 0) {
@@ -157,7 +157,7 @@ int main() {
                 printf("Value: %lu sats.\n", outputs[i]->value);
 
                 // 5. script length
-                if ((response = read(fd[0], &script_size, sizeof(int)))== -1) {
+                if ((response = read(fd[0], &script_size, sizeof(int))) == -1) {
                     perror("read");
                     exit(1);
                 } else if (response == 0) {
@@ -174,7 +174,7 @@ int main() {
                     free(outputs);
                     break;
                 }
-                out->script = malloc(sizeof(char) * script_size);
+                out->script = malloc(script_size);
                 if (out->script == NULL) {
                     perror("malloc");
                     exit(1);
@@ -195,24 +195,27 @@ int main() {
                 printf("With script: %s.\n", outputs[i]->script);
             }
 
-            char *batch; // all the queries combined in a string
-            char *query;
+            char *batch = NULL; // all the queries combined in a string
             // Note: 51 = size of "format" when first 2 "%q"'s are replaced by
             // "P2WPKH" and the final "%q" is empty
             // Will allocate slightly more than enough for the final query.
             int batch_buf_size = ntxOut * 51 + total_addr_size_sum + 1;
-            batch = malloc(batch_buf_size * sizeof(char));
+            batch = malloc(batch_buf_size);
 
             if (batch == NULL) {
                 perror("malloc");
                 exit(1);
+            } else {
+                memset(batch, '\0', batch_buf_size); // clear it just incase.
             }
 
             int address_type;
-            char format[] = "SELECT privkey, %q FROM keys WHERE %q='%q'; ";
+            int batch_size = 0;
+            const char *format = "SELECT privkey, %q FROM keys WHERE %q='%q'; ";
 
             // Check every output against our database
             for (int i = 0; i < ntxOut; i++) {
+                char *query = NULL;
                 // determine the type of address and build the query
                 if (strncmp(outputs[i]->address, "1", 1) == 0) {
                     query = sqlite3_mprintf(format, "P2PKH", "P2PKH",
@@ -229,9 +232,19 @@ int main() {
                     fprintf(stderr, "Failed to build query.");
                     exit(1);
                 }
+                int query_size = strlen(query);
+
+                if (batch_size == 0) {
+                    batch_size += (query_size + 1);
+                } else {
+                    batch_size += query_size;
+                }
+
                 // append the query to batch
-                strcat(batch, query);
+                strncat(batch, query, query_size);
+                batch[batch_size - 1] = '\0';
                 sqlite3_free(query);
+                query = NULL;
             }
 
             // write any returned records to this linked list
@@ -241,30 +254,97 @@ int main() {
             if (rc != SQLITE_OK) {
                 fprintf(stderr, "SQL error: %s\n", zErrMsg);
                 sqlite3_free(zErrMsg);
+                exit(1);
             }
-
+            memset(batch, '\0', batch_buf_size);
             free(batch);
+            batch = NULL;
 
             if (exists != NULL) {
-                // this transaction contains output addresses that we control
-                // TODO: we can create a new transaction that spends them.
+                int batch_size = 0;
+
+                char *start = "BEGIN; ";
+                int start_size = strlen(start);
+                char *end = "COMMIT;";
+
+                batch = malloc(start_size + 1);
+
+                if (batch == NULL) {
+                    perror("malloc");
+                    exit(1);
+                }
+
+                strncpy(batch, start, start_size);
+                batch[start_size] = '\0';
+                batch_size += start_size + 1;
+                const char *placeholder = "INSERT OR IGNORE INTO spendable "\
+                                          "VALUES('%q', '%q', %u, '%q'); ";
                 struct node *cur = exists;
                 while (cur != NULL) {
+                    // this algorithm has an awful run time but it doesn't
+                    // matter in this situation, the # of elements is low.
+                    for (int i = 0; i < ntxOut; i++) {
+                        if (strcmp(outputs[i]->address, cur->data) == 0) {
+                            char *q = NULL;
+                            q = sqlite3_mprintf(placeholder,
+                                                    outputs[i]->address,
+                                                    outputs[i]->script,
+                                                    outputs[i]->value,
+                                                    cur->private);
+                            if (q == NULL) {
+                                fprintf(stderr, "Failed to build update "\
+                                                "query.");
+                                exit(1);
+                            }
+                            int query_size = strlen(q);
+
+                            batch = realloc(batch, batch_size + query_size);
+                            if (batch == NULL) {
+                                perror("realloc");
+                                exit(1);
+                            }
+                            strncat(batch, q, query_size);
+                            batch_size += query_size;
+                            batch[batch_size - 1] = '\0';
+
+                            sqlite3_free(q);
+                        }
+                    }
+
                     printf("\nSpendable output discovered!\n");
                     printf("Address: %s\nPrivate Key: %s\n", cur->data,
                             cur->private);
-                    // TODO: do something
+                    printf("Adding to \"Spendable\" table.\n");
+
                     free(cur->data);
                     free(cur->private);
                     struct node *temp = cur;
                     cur = cur->next;
                     free(temp);
                 }
+
+                int end_size = strlen(end);
+                batch = realloc(batch, batch_size + end_size);
+                if (batch == NULL) {
+                    perror("realloc");
+                    exit(1);
+                }
+
+                strncat(batch, end, end_size);
+                batch_size += end_size;
+                batch[batch_size - 1] = '\0';
+
+                rc = sqlite3_exec(db, batch, NULL, 0, &zErrMsg);
+                if (rc != SQLITE_OK) {
+                    fprintf(stderr, "SQL error: %s\n", zErrMsg);
+                    sqlite3_free(zErrMsg);
+                    exit(1);
+                }
+                memset(batch, '\0', batch_size);
+                free(batch);
             } else {
                 printf("This transaction contained no spendable outputs.\n");
             }
-
-            // clean up and get ready to read the next transaction
 
             // free all the addresses we saved
             for (int j = 0; j < ntxOut; j++) {
@@ -272,7 +352,6 @@ int main() {
                 free(outputs[j]->script);
                 free(outputs[j]);
             }
-
             free(outputs);
         }
 
@@ -304,7 +383,7 @@ int main() {
 
         // load the bloom filter
         if (access((char *) &address_filter_file, F_OK) != -1) {
-            if (bloom_load(&address_bloom, (char *) &address_filter_file) == 0) {
+            if (bloom_load(&address_bloom, (char *) &address_filter_file) == 0){
                 printf("Loaded address filter.\n");
             } else {
                 printf("Failed to load bloom filter.\n");
@@ -332,7 +411,7 @@ int main() {
         memset(&info, 0, sizeof info); /* otherwise uninitialized garbage */
         info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
         info.port = CONTEXT_PORT_NO_LISTEN; /* we do not run any server */
-        info.protocols = protocols;
+        info.protocols = protocols; // global, see definition in socket.c
 
         /*
         * since we know this lws context is only ever going to be used with
@@ -346,8 +425,9 @@ int main() {
         context = lws_create_context(&info);
         if (!context) {
             lwsl_err("lws init failed\n");
-            return 1;
+            exit(1);
         }
+
         struct transaction *cur_tx; // store transaction details here
         char *buffer = NULL; // a buffer that stores partial writes
         int buffer_size = 0;
@@ -373,64 +453,67 @@ int main() {
                     3. Complete write & non-empty buffer (...)
                     4. Complete write & empty buffer
                 */
+                if (discard) {
+                    memset(buffer, '\0', buffer_size);
+                    free(buffer);
+                    buffer = NULL;
+                    discard = 0;
+                }
+
                 if (buffer == NULL) {
-                    buffer = malloc(sizeof(char) * (transaction_size + 1));
+                    buffer = malloc(transaction_size + 1);
                     if (buffer == NULL) {
                         perror("malloc");
                         exit(1);
                     }
-                    strcpy(buffer, transaction_buf);
-                    buffer[transaction_size] = '\0';
+
+                    strncpy(buffer, transaction_buf, transaction_size);
                     buffer_size = transaction_size + 1;
+                    buffer[buffer_size - 1] = '\0';
 
                     // we will add the next message to the buffer
                     if (partial_write) {
-                        printf("Received partial transaction. Waiting for"\
-                               " remaining message.\n");
                         continue;
                     }
                 } else if (buffer != NULL) {
-                    buffer = realloc(buffer, (buffer_size + transaction_size)
-                                     * sizeof(char));
+                    // buffer has something in it, we want to append to the msg
+                    buffer = realloc(buffer, buffer_size + transaction_size);
                     if (buffer == NULL) {
                         perror("realloc");
                         exit(1);
                     }
-                    strcat(buffer, transaction_buf);
-                    buffer_size = buffer_size + transaction_size; // TODO: null terminate?
-                    // buffer[buffer_size] = '\0';
+                    strncat(buffer, transaction_buf, transaction_size);
+                    buffer_size += transaction_size;
+                    buffer[buffer_size - 1] = '\0';
 
                     // we will add the next message to the buffer
                     if (partial_write) {
-                        printf("Received partial transaction. Waiting for"\
-                               " remaining message.\n");
                         continue;
-                    } else {
-                        printf("MESSAGE COMPLETED\n");
                     }
                 }
                 cur_tx = create_transaction(buffer, buffer_size);
 
                 // reset our buffers now that we saved the data in cur_tx
-                memset(transaction_buf, '\0', transaction_size);
-                free(transaction_buf);
-                transaction_buf = NULL; // otherwise we will enter this if block
+                // this is free'd in socket.c
+                memset(transaction_buf, '\0', transaction_size + 1);
                 transaction_size = 0;
 
-                memset(buffer, '\0', buffer_size - 1);
+                memset(buffer, '\0', buffer_size);
                 free(buffer);
                 buffer = NULL;
-                buffer_size = 0;
 
                 if (cur_tx == NULL) {
-                    fprintf(stderr, "Had to discard some partial transactions."\
-                                    "\nThis usually occurs when the order"\
-                                    " of partial reads is lost.\n");
+                    if (buffer_size > 4082) {
+                        fprintf(stderr, "Had to discard some partial "\
+                                        "transactions. \nThis usually occurs "\
+                                        "when the order of partial reads is"\
+                                        " lost.\n");
+                    }
+                    buffer_size = 0;
                     continue;
                 }
+                buffer_size = 0;
 
-                // linked list of addresses that came back as "positive" from BF
-                struct node *positive_address_head = NULL;
                 int list_size = 0;
 
                 // loop over outputs
@@ -463,7 +546,7 @@ int main() {
                     if (write(fd[1], &list_size, sizeof(list_size)) == -1) {
                         perror("write");
                         fprintf(stderr, "Failed to write the number of outputs"\
-                                        "to the pipe.\n");
+                                        " to the pipe.\n");
                         exit(1);
                     }
 
@@ -520,7 +603,7 @@ int main() {
                 free_transaction(cur_tx);
             }
         }
-
+        free(transaction_buf); // won't be freed in socket.c on user termination
         lws_context_destroy(context);
         lwsl_user("Connection closed.\n");
 

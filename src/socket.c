@@ -11,7 +11,8 @@ static const char *server_address = "ws.blockchain.info", *pro = "wss";
 int subscribed = 0; // becomes 1 when we've subscribed to blockchain service
 char *transaction_buf;
 int transaction_size;
-int partial_write;
+int partial_write = 0;
+int discard = 0;
 
 static int connect_client(void) {
 	struct lws_client_connect_info i;
@@ -89,19 +90,32 @@ callback_tx_client(struct lws *wsi, enum lws_callback_reasons reason,
 
         case LWS_CALLBACK_CLIENT_RECEIVE:
             lwsl_user("Received New Transaction!\n");
-            transaction_buf = malloc((len + 1) * sizeof(char));
+            if (transaction_buf != NULL) {
+                free(transaction_buf);
+                transaction_buf = NULL;
+            }
+            transaction_buf = malloc(len + 1);
 
             if (transaction_buf == NULL) {
                 perror("malloc");
                 return -1;
+            } else {
+                memset(transaction_buf, '\0', len + 1);
             }
 
             strcpy(transaction_buf, in);
             transaction_buf[len] = '\0';
             transaction_size = len;
 
-            // JSON object ends with }; observed largest tx size is 4082 bytes.
-            if (transaction_buf[len-1] != '}' || transaction_size == 4082) {
+            if (partial_write) {
+                // discard previous read if we got an out of order message
+                if (strstr(transaction_buf, "\"op\"") != NULL) {
+                    discard = 1; // discard previous read
+                }
+            }
+
+            // a partial write
+            if (transaction_buf[len - 1] != '}' || transaction_size == 4082) {
                 partial_write = 1;
             } else {
                 partial_write = 0;
