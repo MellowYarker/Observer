@@ -253,7 +253,6 @@ int main() {
             rc = sqlite3_exec(db, batch, callback, &exists, &zErrMsg);
             if (rc != SQLITE_OK) {
                 fprintf(stderr, "SQL error: %s\n", zErrMsg);
-                printf("%s\n", batch);
                 sqlite3_free(zErrMsg);
                 exit(1);
             }
@@ -262,20 +261,13 @@ int main() {
             batch = NULL;
 
             if (exists != NULL) {
-                // Find all instances of this address in this output
-                // Keep track of addresses, since we may get 2+ of the same
-                //      ex. 1 transaction with 4 outputs to 1 address
-                //          We will get that one address 4 times
-                //
-                char *placeholder = "INSERT INTO spendable VALUES"\
-                                    "('%q', '%q', %q, '%q'); ";
                 int batch_size = 0;
 
                 char *start = "BEGIN; ";
                 int start_size = strlen(start);
                 char *end = "COMMIT;";
 
-                batch = malloc(sizeof(char) * start_size + 1);
+                batch = malloc(start_size + 1);
 
                 if (batch == NULL) {
                     perror("malloc");
@@ -284,85 +276,75 @@ int main() {
 
                 strncpy(batch, start, start_size);
                 batch[start_size] = '\0';
-
-                // TODO: we can create a new transaction that spends them.
+                batch_size += start_size + 1;
+                const char *placeholder = "INSERT OR IGNORE INTO spendable "\
+                                          "VALUES('%q', '%q', %u, '%q'); ";
                 struct node *cur = exists;
                 while (cur != NULL) {
                     // this algorithm has an awful run time but it doesn't
                     // matter in this situation, the # of elements is low.
                     for (int i = 0; i < ntxOut; i++) {
                         if (strcmp(outputs[i]->address, cur->data) == 0) {
-                            char *query = sqlite3_mprintf(placeholder,
-                                                          outputs[i]->address,
-                                                          outputs[i]->script,
-                                                          outputs[i]->value,
-                                                          cur->private);
-                            if (query == NULL) {
+                            char *q = NULL;
+                            q = sqlite3_mprintf(placeholder,
+                                                    outputs[i]->address,
+                                                    outputs[i]->script,
+                                                    outputs[i]->value,
+                                                    cur->private);
+                            if (q == NULL) {
                                 fprintf(stderr, "Failed to build update "\
                                                 "query.");
                                 exit(1);
                             }
-                            int query_size = strlen(query);
-                            if (batch_size == 0) {
-                                batch = malloc((query_size + 1) * sizeof(char));
-                                if (batch == NULL) {
-                                    perror("malloc");
-                                    exit(1);
-                                }
-                                strncpy(batch, query, query_size);
-                                batch[query_size] = '\0';
-                                batch_size = query_size + 1;
-                            } else {
-                                batch = realloc(batch,
-                                                batch_size + query_size + 1);
-                                if (batch == NULL) {
-                                    perror("realloc");
-                                    exit(1);
-                                }
-                                strncat(batch, query, query_size);
-                                batch_size += (query_size + 1);
-                                batch[batch_size - 1] = '\0';
-                            }
-                            sqlite3_free(query);
+                            int query_size = strlen(q);
 
-                            // Pull the script and value from outputs
-                            // pull the address and private key from the node
-                            // add them to the insert query
+                            batch = realloc(batch, batch_size + query_size);
+                            if (batch == NULL) {
+                                perror("realloc");
+                                exit(1);
+                            }
+                            strncat(batch, q, query_size);
+                            batch_size += query_size;
+                            batch[batch_size - 1] = '\0';
+
+                            sqlite3_free(q);
                         }
                     }
-                    int end_size = strlen(end);
-                    batch = realloc(batch, batch_size + end_size + 1);
-                    if (batch == NULL) {
-                        perror("realloc");
-                        exit(1);
-                    }
-
-                    strncat(batch, end, end_size);
-                    batch[batch_size + end_size] = '\0';
 
                     printf("\nSpendable output discovered!\n");
                     printf("Address: %s\nPrivate Key: %s\n", cur->data,
                             cur->private);
                     printf("Adding to \"Spendable\" table.\n");
 
-                    rc = sqlite3_exec(db, batch, NULL, 0, &zErrMsg);
-                    if (rc != SQLITE_OK) {
-                        fprintf(stderr, "SQL error: %s\n", zErrMsg);
-                        sqlite3_free(zErrMsg);
-                    }
-                    free(batch);
-
                     free(cur->data);
                     free(cur->private);
-                    struct node *temp = cur;
+                    struct node * temp = cur;
                     cur = cur->next;
                     free(temp);
                 }
+
+                int end_size = strlen(end);
+                batch = realloc(batch, batch_size + end_size);
+                if (batch == NULL) {
+                    perror("realloc");
+                    exit(1);
+                }
+
+                strncat(batch, end, end_size);
+                batch_size += end_size;
+                batch[batch_size - 1] = '\0';
+
+                rc = sqlite3_exec(db, batch, NULL, 0, &zErrMsg);
+                if (rc != SQLITE_OK) {
+                    fprintf(stderr, "SQL error: %s\n", zErrMsg);
+                    sqlite3_free(zErrMsg);
+                    exit(1);
+                }
+                memset(batch, '\0', batch_size);
+                free(batch);
             } else {
                 printf("This transaction contained no spendable outputs.\n");
             }
-
-            // clean up and get ready to read the next transaction
 
             // free all the addresses we saved
             for (int j = 0; j < ntxOut; j++) {
@@ -533,8 +515,6 @@ int main() {
                 }
                 buffer_size = 0;
 
-                // linked list of addresses that came back as "positive" from BF
-                struct node *positive_address_head = NULL;
                 int list_size = 0;
 
                 // loop over outputs
