@@ -51,11 +51,23 @@ Note: The download will take a while (it's nearly 20GB), however, inserting the 
 #### Generating keys
 You can generate key sets using the `gen_keys` program.
 ```bash
-./gen_keys <quantity of seeds> <input file>
+./gen_keys <input file>
 ```
 For example
 ```
-$ ./gen_keys 3000 100kseeds.txt
+$ ./gen_keys 100kseeds.txt
+```
+#### Generating seeds
+If you want to generate seeds to feed to `./gen_keys`, you can use `python3 build_seed_list.py`. You'll be prompted for a word, once you enter one, a bunch of related words will be found and added to `seeds.txt`.
+```bash
+$ python3 build_seed_list.py
+Press ctrl + c to exit.
+
+Collect words related to: bitcoin
+Found 222 words related to 'bitcoin'.
+Added 'bitcoin' to words.txt
+Words related to 'bitcoin' have been added to seeds.txt
+$ ./gen_keys seeds.txt
 ```
 
 Key sets are stored in an sqlite3 table, here's a quick example of querying the database.
@@ -76,10 +88,7 @@ password000000000000000000000000  password    1U44rmtsDPjV1CsrZ9JXh3WFLUTkFD99E 
 #### Watching the Mempool
 The `reader` program connects to blockchain.com and gets a stream of unconfirmed transactions in real time. If any transactions contain output addresses that are in your database, `reader` will find them and store the output in your database.
 
-Note: You'll need to generate addresses before you can run the `reader` program, it's purpose is to watch the network for addresses *you* can control. 
+Note: You'll need to generate addresses before you can run the `reader` program, its purpose is to watch the network for addresses that *you* can control.
 
-To watch the network, just run
-```bash
-./reader
- ```
+To watch the network, just run `./reader`
     
