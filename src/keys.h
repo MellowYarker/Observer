@@ -52,6 +52,10 @@ extern const priv_func_ptr priv_gen_functions[PRIVATE_KEY_TYPES];
 */
 int sort_seeds(char *orig, char *sorted);
 
+/*  Stores the number of lines in the input seed file into count.
+    Returns 0 on success, 1 on failure.
+*/
+int seed_count(char *file, unsigned long *count);
 
 /*  On success, this returns the number of records in the database. If it fails,
     it returns -1.
