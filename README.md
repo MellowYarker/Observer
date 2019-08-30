@@ -21,7 +21,7 @@ You provide "*seeds*" that are turned into private keys. You can find lots of ex
 You can easily add methods that convert seeds into private keys. *See the [wiki](https://github.com/MellowYarker/Observer/wiki/Seeds-and-Private-Keys) for more details.*
 
 ### Observing
-We subscribe to [Blockchain](https://www.blockchain.com/api/api_websocket)'s websocket api to get a stream of unconfirmed transactions. Each transaction is parsed for its output addresses, if any are spendable, we take note of them (*will eventually be able to spend them*).
+*Observer* subscribes to [Blockchain](https://www.blockchain.com/api/api_websocket)'s websocket api to get a stream of unconfirmed transactions. Each transaction is parsed for its outputs, if any are spendable they are added to the `spendable` table in *Observer*'s database. 
 
 
 #### Dependencies
@@ -39,6 +39,7 @@ The configure script will take a while, it needs to compile and install several 
 
 Note: The download will take a while (it's nearly 20GB), however, inserting the records to the database will take even longer. Over 520 million records need to be inserted.
 
+*See the Makefile in* `src` *for more options.*
 ## Usage
 
 #### Generating keys
@@ -67,8 +68,11 @@ password000000000000000000000000  password    1U44rmtsDPjV1CsrZ9JXh3WFLUTkFD99E 
 ```
 
 #### Watching the Mempool
-In `/src`, you can compile the *reader* program by running `make reader`. This program connects to blockchain.com and gets a stream of unconfirmed transactions in real time. If any transactions contain output addresses that are in your database, *reader* will find them and build a new transaction to move them.
+The `reader` program connects to blockchain.com and gets a stream of unconfirmed transactions in real time. If any transactions contain output addresses that are in your database, `reader` will find them and store the output in your database.
 
+Note: You'll need to generate addresses before you can run the `reader` program, it's purpose is to watch the network for addresses *you* can control. 
+
+To watch the network, just run
 ```bash
 ./reader
  ```
