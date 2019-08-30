@@ -41,6 +41,38 @@ int sort_seeds(char *orig, char *sorted) {
     }
 }
 
+int seed_count(char *file, unsigned long *count) {
+    FILE *fp;
+    char path[300];
+    char *format = "/bin/wc -l < ";
+
+    // the command we want to run
+    char *command = malloc(strlen(format) + strlen(file) + 1);
+    if (command == NULL) {
+        perror("malloc");
+        return 1;
+    }
+    memset(command, '\0', strlen(format) + strlen(file) + 1);
+    strcat(command, format);
+    strcat(command, file);
+
+    /* Open the command for reading. */
+    fp = popen(command, "r");
+    if (fp == NULL) {
+        fprintf(stderr, "Failed to get seed count.\n" );
+        free(command);
+        return 1;
+    }
+    free(command);
+
+    fgets(path, sizeof(path), fp);
+    *count = strtoul(path, NULL, 10);
+
+    /* close */
+    pclose(fp);
+    return 0;
+}
+
 
 size_t get_record_count(sqlite3 *db) {
     char *query = "SELECT count() FROM keys;";
@@ -218,7 +250,7 @@ void free_Array(struct Array *key_array) {
 
 
 int remove_duplicates(struct Array *src, struct Array *dest) {
-    if (init_Array(dest, (size_t) src->used * 0.5) == 2) {
+    if (init_Array(dest, (size_t) src->used * 0.5) == 1) {
         return 1;
     }
 
@@ -351,11 +383,9 @@ int callback(void *arr, int argc, char **argv, char **columns) {
 
 
 void remove_newline(char *s) {
-    for (int i = 0; i < strlen(s); i++) {
-        if (s[i] == '\n') {
-            s[i] = '\0';
-            return;
-        }
+    int index = strlen(s);
+    if (s[index - 1] == '\n') {
+        s[index - 1] = '\0';
     }
 }
 
