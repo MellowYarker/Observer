@@ -7,7 +7,7 @@ Find and move bitcoin secured by weak keys before others with nefarious intentio
 
 *Observer* will
 * Generate and store a massive amount of weak private keys. [*Tool Nearly Complete*](https://github.com/MellowYarker/Observer/projects/1)
-* Watch the bitcoin network to see if any of the addresses in our database have funds. [*In Progress*](https://github.com/MellowYarker/Observer/projects/2)
+* Watch the bitcoin network to see if any of the addresses in our database have funds. [*Complete*](https://github.com/MellowYarker/Observer/projects/2)
 * Move any discovered funds and offer the owner a way to reclaim them (*at a new secure address*). (**Not started**)
 
 ## WARNING
