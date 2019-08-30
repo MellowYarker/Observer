@@ -23,8 +23,8 @@
 
 int main(int argc, char **argv) {
 
-    if (argc != 3) {
-        fprintf(stdout, "Usage: %s <# keys to generate> <file>\n", argv[0]);
+    if (argc != 2) {
+        fprintf(stdout, "Usage: %s <file>\n", argv[0]);
         exit(1);
     }
 
@@ -35,16 +35,20 @@ int main(int argc, char **argv) {
 
     // new sorted filename
     char *temp = "sorted_";
-    char sorted[strlen(temp) + strlen(argv[2]) + 1];
+    char sorted[strlen(temp) + strlen(argv[1]) + 1];
     strcpy(sorted, temp);
-    strcat(sorted, argv[2]);
+    strcat(sorted, argv[1]);
 
-    if (sort_seeds(argv[2], sorted) == 1) {
+    if (sort_seeds(argv[1], sorted) == 1) {
         exit(1);
     }
+    unsigned long count; // number of seeds we will use
+    if (seed_count(sorted, &count) == 1) {
+        exit(1);
+    }
+    printf("Found %lu unique seeds.\n", count);
 
     const btc_chainparams* chain = &btc_chainparams_main; // mainnet
-    const unsigned long count = strtol(argv[1], NULL, 10); // # of seeds to use
     // "generated" is the number of keys we will generate. This is important!
     const unsigned long generated = count * PRIVATE_KEY_TYPES;
 
