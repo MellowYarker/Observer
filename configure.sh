@@ -22,8 +22,10 @@ echo "Compiling and installing libwebsockets"
 cd ../../libwebsockets
 mkdir build
 cd build
+# if mac
+export OPENSSL_ROOT_DIR=/usr/local/Cellar/openssl/*
 cmake ..
-make && sudo make install
+make -j4 && sudo make install
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
 sudo ldconfig
 cd ..
