@@ -57,11 +57,30 @@ callback_tx_client(struct lws *wsi, enum lws_callback_reasons reason,
         case LWS_CALLBACK_CLIENT_ESTABLISHED:
             lwsl_user("%s: established\n", __func__);
             lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
-            lwsl_user("Waiting for server to become writeable...\n");
+            // We should only be writing in LWS_CALLBACK_CLIENT_WRITEABLE.
+            // However, I ran into a scenario where the server never became
+            // writeable, so we have to try here and in writeable as well.
+            lwsl_user("Waiting for server to be writeable...\n");
+            if (!subscribed) {
+                uint8_t msg[LWS_PRE + 125];
+                int m;
+                n = 0;
+                n = lws_snprintf((char *)msg + LWS_PRE, 125,
+                                "{\"op\": \"unconfirmed_sub\"}");
+                lwsl_user("Subscribing to unconfirmed transaction stream.\n");
+
+                m = lws_write(wsi, msg + LWS_PRE, n, LWS_WRITE_TEXT);
+
+                if (m < n) {
+                    lwsl_err("Failed to send subscription: %d\n", m);
+                    return -1;
+                }
+                subscribed = 1;
+            }
             break;
 
         case LWS_CALLBACK_CLIENT_WRITEABLE:
-            // this is where we write {"op": "unconfirmed_sub"}
+            // this is where we send {"op": "unconfirmed_sub"}
             // ONLY WRITE if we haven't subscribed yet
             if (!subscribed) {
                 uint8_t msg[LWS_PRE + 125];
@@ -134,6 +153,7 @@ try:
 		break;
 
 	default:
+        printf("Waiting for something to happen.\n");
 		break;
 	}
 
