@@ -44,7 +44,7 @@ int sort_seeds(char *orig, char *sorted) {
 int seed_count(char *file, unsigned long *count) {
     FILE *fp;
     char path[300];
-    char *format = "/bin/wc -l < ";
+    char *format = "/usr/bin/wc -l < ";
 
     // the command we want to run
     char *command = malloc(strlen(format) + strlen(file) + 1);
