@@ -20,12 +20,12 @@ gen_keys: generate_keys.o key_funcs.o
 # running the reader program!
 reader: reader.o reader_funcs.c socket.c
 	${libbtc}/libtool --silent --tag=CC --mode=link gcc ${flags} -static -o $@ \
-	-I${mac_ssl} $^ ${libs} cjson/cJSON.c -L/usr/local/lib -lwebsockets
+		-I${mac_ssl} $^ ${libs} cjson/cJSON.c -Wl,-rpath=/usr/local/lib -L/usr/local/lib -lwebsockets
 
 %.o: %.c
 	gcc -I${libbtc}/include/btc -I${libbloom} -c $< -I${mac_ssl} -o $@
 
-socket.c: socket.c
+socket.c:
 	mkdir sock_build
 	cd sock_build
 	cmake .. && make
